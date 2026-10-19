@@ -115,6 +115,8 @@ def trace_prompt(current, system: str, user: str, model: str, params: dict) -> N
     current.set_attribute("gen_ai.system", "ollama")
     current.set_attribute("gen_ai.provider.name", "ollama")
     current.set_attribute("gen_ai.operation.name", "chat")
+    current.set_attribute("llm.request.type", "chat")
+    current.set_attribute("llm.is_streaming", True)
     current.set_attribute("gen_ai.request.model", model)
     for key, value in params.items():
         current.set_attribute(f"gen_ai.request.{key}", value)
