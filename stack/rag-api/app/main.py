@@ -127,8 +127,8 @@ async def chat(req: ChatRequest):
                 messages = rag.build_messages(req.message, req.history, sources, req.system_prompt)
                 sampling = {"temperature": req.temperature, "top_k": req.top_k, "top_p": req.top_p}
                 with span("rag.generate", kind="task", **{"rag.sources": len(sources)}) as gen:
-                    # current prompt only: system instruction + current user message (no history)
-                    trace_prompt(gen, messages[0]["content"], messages[-1]["content"], rag.LLM_MODEL, sampling)
+                    # traced: system instruction + the raw user question only (no history, no retrieved passages)
+                    trace_prompt(gen, messages[0]["content"], req.message, rag.LLM_MODEL, sampling)
                     tokens, tps, answer = 0, 0.0, []
                     async for part in await rag.chat_stream(messages, **sampling):
                         text = rag.field(rag.field(part, "message", {}), "content", "")
