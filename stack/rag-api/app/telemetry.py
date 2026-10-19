@@ -2,7 +2,9 @@
 
 Deliberately minimal : only what the application itself decides to trace is sent.
   - the current activity : spans rag.chat (workflow), rag.retrieve and rag.generate (tasks)
-  - the prompt           : the messages sent to the model, as span attributes on rag.generate
+  - the prompt           : the CURRENT prompt only (system + current user message, never the
+                           conversation history), as gen_ai.* attributes on rag.generate so
+                           Dynatrace shows it in AI Observability, plus token usage counts
 Nothing else : no automatic instrumentation (Ollama, ChromaDB, HTTP...), no completion text,
 no metrics, no logs.
 """
@@ -94,12 +96,30 @@ def span(name: str, kind: str = "task", **attributes):
 
 
 def trace_prompt(current, messages: list[dict], model: str, params: dict) -> None:
-    """Record the prompt (all messages sent to the model) and the request settings on a span."""
+    """Record the current prompt and the request settings on a span, using the GenAI semantic
+    conventions that Dynatrace AI Observability reads (gen_ai.system, gen_ai.prompt.N.*, ...).
+
+    `messages` must only hold the current prompt (system + current user message): the
+    conversation history is never traced.
+    """
     if current is None:
         return
+    current.set_attribute("gen_ai.system", "Ollama")
+    current.set_attribute("gen_ai.operation.name", "chat")
+    current.set_attribute("llm.request.type", "chat")
     current.set_attribute("gen_ai.request.model", model)
     for key, value in params.items():
         current.set_attribute(f"gen_ai.request.{key}", value)
     for i, message in enumerate(messages):
         current.set_attribute(f"gen_ai.prompt.{i}.role", message["role"])
         current.set_attribute(f"gen_ai.prompt.{i}.content", str(message["content"])[:MAX_ATTR])
+
+
+def trace_usage(current, model: str, input_tokens: int, output_tokens: int) -> None:
+    """Record token usage (numbers only, no completion text) for AI Observability cost/usage views."""
+    if current is None:
+        return
+    current.set_attribute("gen_ai.response.model", model)
+    current.set_attribute("gen_ai.usage.input_tokens", int(input_tokens))
+    current.set_attribute("gen_ai.usage.output_tokens", int(output_tokens))
+    current.set_attribute("llm.usage.total_tokens", int(input_tokens) + int(output_tokens))
