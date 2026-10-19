@@ -10,7 +10,7 @@ from pathlib import Path
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 
 # OpenLLMetry must be initialised BEFORE ollama / chromadb are imported (see rag.py)
-from app.telemetry import init_telemetry, is_enabled, span, trace_prompt, trace_usage  # noqa: E402
+from app.telemetry import init_telemetry, is_enabled, span, trace_output, trace_prompt, trace_usage  # noqa: E402
 
 init_telemetry()
 
@@ -127,17 +127,19 @@ async def chat(req: ChatRequest):
                 messages = rag.build_messages(req.message, req.history, sources, req.system_prompt)
                 sampling = {"temperature": req.temperature, "top_k": req.top_k, "top_p": req.top_p}
                 with span("rag.generate", kind="task", **{"rag.sources": len(sources)}) as gen:
-                    # current prompt only: system message + current user message (no history)
-                    trace_prompt(gen, [messages[0], messages[-1]], rag.LLM_MODEL, sampling)
-                    tokens, tps = 0, 0.0
+                    # current prompt only: system instruction + current user message (no history)
+                    trace_prompt(gen, messages[0]["content"], messages[-1]["content"], rag.LLM_MODEL, sampling)
+                    tokens, tps, answer = 0, 0.0, []
                     async for part in await rag.chat_stream(messages, **sampling):
                         text = rag.field(rag.field(part, "message", {}), "content", "")
                         if text:
+                            answer.append(text)
                             yield sse("token", {"text": text})
                         if rag.field(part, "done", False):
                             tokens = rag.field(part, "eval_count", 0)
                             duration = rag.field(part, "eval_duration", 0) / 1e9
                             tps = round(tokens / duration, 2) if duration else 0.0
+                            trace_output(gen, "".join(answer))
                             trace_usage(gen, rag.LLM_MODEL, rag.field(part, "prompt_eval_count", 0), tokens)
                 yield sse("done", {"tokens": tokens, "tps": tps, "total_s": round(time.time() - started, 1)})
         except Exception as exc:

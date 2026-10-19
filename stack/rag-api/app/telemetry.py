@@ -2,12 +2,16 @@
 
 Deliberately minimal : only what the application itself decides to trace is sent.
   - the current activity : spans rag.chat (workflow), rag.retrieve and rag.generate (tasks)
-  - the prompt           : the CURRENT prompt only (system + current user message, never the
-                           conversation history), as gen_ai.* attributes on rag.generate so
-                           Dynatrace shows it in AI Observability, plus token usage counts
-Nothing else : no automatic instrumentation (Ollama, ChromaDB, HTTP...), no completion text,
-no metrics, no logs.
+  - the prompt           : the CURRENT prompt only (never the conversation history), as GenAI
+                           semantic-convention attributes on rag.generate (read by Dynatrace
+                           AI Observability):
+                             gen_ai.system_instructions  the system instruction
+                             gen_ai.input.messages       the current user message
+                             gen_ai.output.messages      the model answer
+                           plus token usage counts
+Nothing else : no automatic instrumentation (Ollama, ChromaDB, HTTP...), no metrics, no logs.
 """
+import json
 import logging
 import os
 from contextlib import contextmanager
@@ -95,28 +99,44 @@ def span(name: str, kind: str = "task", **attributes):
         yield current
 
 
-def trace_prompt(current, messages: list[dict], model: str, params: dict) -> None:
-    """Record the current prompt and the request settings on a span, using the GenAI semantic
-    conventions that Dynatrace AI Observability reads (gen_ai.system, gen_ai.prompt.N.*, ...).
+def _text_message(role: str, content, **extra) -> dict:
+    """One message in the GenAI semantic-convention JSON shape."""
+    return {"role": role, "parts": [{"type": "text", "content": str(content)[:MAX_ATTR]}], **extra}
 
-    `messages` must only hold the current prompt (system + current user message): the
-    conversation history is never traced.
+
+def trace_prompt(current, system: str, user: str, model: str, params: dict) -> None:
+    """Record the current prompt and the request settings on a span, using the GenAI semantic
+    conventions that Dynatrace AI Observability reads.
+
+    Only the current prompt is traced: the conversation history is never passed in.
     """
     if current is None:
         return
-    current.set_attribute("gen_ai.system", "Ollama")
+    current.set_attribute("gen_ai.system", "ollama")
+    current.set_attribute("gen_ai.provider.name", "ollama")
     current.set_attribute("gen_ai.operation.name", "chat")
-    current.set_attribute("llm.request.type", "chat")
     current.set_attribute("gen_ai.request.model", model)
     for key, value in params.items():
         current.set_attribute(f"gen_ai.request.{key}", value)
-    for i, message in enumerate(messages):
-        current.set_attribute(f"gen_ai.prompt.{i}.role", message["role"])
-        current.set_attribute(f"gen_ai.prompt.{i}.content", str(message["content"])[:MAX_ATTR])
+    current.set_attribute(
+        "gen_ai.system_instructions",
+        json.dumps([{"type": "text", "content": str(system)[:MAX_ATTR]}], ensure_ascii=False))
+    current.set_attribute(
+        "gen_ai.input.messages", json.dumps([_text_message("user", user)], ensure_ascii=False))
+
+
+def trace_output(current, answer: str, finish_reason: str = "stop") -> None:
+    """Record the model answer (gen_ai.output.messages)."""
+    if current is None:
+        return
+    current.set_attribute(
+        "gen_ai.output.messages",
+        json.dumps([_text_message("assistant", answer, finish_reason=finish_reason)], ensure_ascii=False))
+    current.set_attribute("gen_ai.response.finish_reasons", [finish_reason])
 
 
 def trace_usage(current, model: str, input_tokens: int, output_tokens: int) -> None:
-    """Record token usage (numbers only, no completion text) for AI Observability cost/usage views."""
+    """Record token usage for AI Observability cost/usage views."""
     if current is None:
         return
     current.set_attribute("gen_ai.response.model", model)
