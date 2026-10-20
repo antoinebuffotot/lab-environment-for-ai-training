@@ -59,9 +59,8 @@ services:
       DT_TENANT: ${DT_TENANT:-}
       DT_API_TOKEN: ${DT_API_TOKEN:-}
       OTEL_SERVICE_NAME: ${OTEL_SERVICE_NAME:-ai-lab-rag-api}
-      # traces only : the app traces the activity and the prompt itself (see rag-api/app/telemetry.py)
-      TRACELOOP_TRACE_CONTENT: "false"
-      TRACELOOP_METRICS_ENABLED: "false"
+      # OpenLLMetry records prompts and completions in the LLM span (set to false to keep content out)
+      OPENLLMETRY_TRACE_CONTENT: ${OPENLLMETRY_TRACE_CONTENT:-true}
       TRACELOOP_TELEMETRY: "false"
     volumes:
       - ./docs:/data/docs:ro

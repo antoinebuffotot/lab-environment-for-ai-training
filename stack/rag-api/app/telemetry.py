@@ -1,38 +1,36 @@
-"""OpenLLMetry (Traceloop SDK) -> Dynatrace OTLP, enabled only on demand.
+"""OpenLLMetry (Traceloop SDK) -> Dynatrace AI Observability, enabled only on demand.
 
-Deliberately minimal : only what the application itself decides to trace is sent.
-  - the current activity : spans rag.chat (workflow), rag.retrieve and rag.generate (tasks)
-  - the prompt           : the CURRENT prompt only (never the conversation history), as GenAI
-                           semantic-convention attributes on rag.generate (read by Dynatrace
-                           AI Observability):
-                             gen_ai.system_instructions  the system instruction
-                             gen_ai.input.messages       the current user message
-                             gen_ai.output.messages      the model answer
-                           plus token usage counts
-Nothing else : no automatic instrumentation (Ollama, ChromaDB, HTTP...), no metrics, no logs.
+Follows https://docs.dynatrace.com/docs/observe/dynatrace-for-ai-observability/get-started/openllmetry :
+  - Traceloop.init(...) pointed at the tenant OTLP endpoint (disable_batch=True),
+  - metrics temporality set to "delta",
+  - @workflow / @task decorators for the application activity (rag.chat, rag.retrieve, rag.generate).
+The LLM span (model, parameters, token usage, prompt and completion) is produced by the SDK's own
+Ollama instrumentation: nothing is hand-written. Other instrumentations (ChromaDB, HTTP...) are blocked.
 """
-import json
 import logging
 import os
-from contextlib import contextmanager
 
-# Forced (not setdefault) : these must not be re-enabled by a stray environment variable.
-os.environ["TRACELOOP_TELEMETRY"] = "false"        # Traceloop's own usage statistics
-os.environ["TRACELOOP_TRACE_CONTENT"] = "false"    # no automatic capture of prompts / completions
-os.environ["TRACELOOP_METRICS_ENABLED"] = "false"  # traces only
+# Forced (not setdefault) : these must not be changed by a stray environment variable.
+os.environ["TRACELOOP_TELEMETRY"] = "false"                          # Traceloop's own usage statistics
+os.environ["OTEL_EXPORTER_OTLP_METRICS_TEMPORALITY_PREFERENCE"] = "delta"   # required by Dynatrace
 
 log = logging.getLogger("telemetry")
-_tracer = None
-MAX_ATTR = 8000
+_enabled = False
 
 
 def _truthy(value) -> bool:
     return str(value).strip().lower() in ("1", "true", "y", "yes", "on")
 
 
+def _auth_header(token: str) -> dict:
+    # classic access tokens (dt0c01.*) use "Api-Token", platform tokens (dt0s16.*) use "Bearer"
+    scheme = "Api-Token" if token.startswith("dt0c01.") else "Bearer"
+    return {"Authorization": f"{scheme} {token}"}
+
+
 def init_telemetry() -> bool:
     """Initialise OpenLLMetry if enabled. Must be called before importing ollama / chromadb."""
-    global _tracer
+    global _enabled
     if not _truthy(os.getenv("OPENLLMETRY_ENABLED", "false")):
         log.info("OpenLLMetry disabled")
         return False
@@ -43,105 +41,60 @@ def init_telemetry() -> bool:
         log.warning("OpenLLMetry enabled but DT_TENANT / DT_API_TOKEN missing: telemetry disabled")
         return False
 
+    # prompts and completions are recorded by the SDK unless explicitly turned off
+    os.environ["TRACELOOP_TRACE_CONTENT"] = "true" if _truthy(os.getenv("OPENLLMETRY_TRACE_CONTENT", "true")) else "false"
+
     try:
-        from opentelemetry import trace
         from traceloop.sdk import Traceloop
 
         kwargs = dict(
             app_name=os.getenv("OTEL_SERVICE_NAME", "ai-lab-rag-api"),
             api_endpoint=f"https://{tenant}/api/v2/otlp",
-            headers={"Authorization": f"Api-Token {token}"},
-            disable_batch=False,
+            headers=_auth_header(token),
+            disable_batch=True,
             resource_attributes={
                 "deployment.environment": "ai-training",
                 "host.name": os.getenv("VM_FQDN", "localhost"),
             },
         )
         try:
-            # block every automatic instrumentation : only our own spans are emitted
+            # only the Ollama (LLM) instrumentation: block everything else
             from traceloop.sdk.instruments import Instruments
-            kwargs.update(instruments=set(Instruments), block_instruments=set(Instruments))
+            kwargs.update(instruments={Instruments.OLLAMA})
         except Exception:
             log.warning("cannot restrict automatic instrumentations with this SDK version")
 
         try:
             Traceloop.init(**kwargs)
-        except TypeError:  # older SDK without instruments / block_instruments
+        except TypeError:  # older SDK without `instruments`
             kwargs.pop("instruments", None)
-            kwargs.pop("block_instruments", None)
             Traceloop.init(**kwargs)
 
-        _tracer = trace.get_tracer("ai-lab")
-        log.info("OpenLLMetry enabled (activity + prompt only) -> %s", kwargs["api_endpoint"])
+        _enabled = True
+        log.info("OpenLLMetry enabled -> %s (trace content: %s)", kwargs["api_endpoint"],
+                 os.environ["TRACELOOP_TRACE_CONTENT"])
         return True
     except Exception:  # never prevent the app from starting
         log.exception("OpenLLMetry initialisation failed: telemetry disabled")
-        _tracer = None
+        _enabled = False
         return False
 
 
 def is_enabled() -> bool:
-    return _tracer is not None
+    return _enabled
 
 
-@contextmanager
-def span(name: str, kind: str = "task", **attributes):
-    """Activity span; `kind` is 'workflow' or 'task' (Traceloop semantic attribute)."""
-    if _tracer is None:
-        yield None
-        return
-    with _tracer.start_as_current_span(name) as current:
-        current.set_attribute("traceloop.span.kind", kind)
-        current.set_attribute("traceloop.entity.name", name)
-        for key, value in attributes.items():
-            if value is not None:
-                current.set_attribute(key, value)
-        yield current
+def _decorator(kind: str, name: str):
+    """Traceloop @workflow / @task when enabled, otherwise a no-op decorator."""
+    if not _enabled:
+        return lambda fn: fn
+    from traceloop.sdk import decorators
+    return getattr(decorators, kind)(name=name)
 
 
-def _text_message(role: str, content, **extra) -> dict:
-    """One message in the GenAI semantic-convention JSON shape."""
-    return {"role": role, "parts": [{"type": "text", "content": str(content)[:MAX_ATTR]}], **extra}
+def workflow(name: str):
+    return _decorator("workflow", name)
 
 
-def trace_prompt(current, system: str, user: str, model: str, params: dict) -> None:
-    """Record the current prompt and the request settings on a span, using the GenAI semantic
-    conventions that Dynatrace AI Observability reads.
-
-    Only the current prompt is traced: the conversation history is never passed in.
-    """
-    if current is None:
-        return
-    current.set_attribute("gen_ai.system", "ollama")
-    current.set_attribute("gen_ai.provider.name", "ollama")
-    current.set_attribute("gen_ai.operation.name", "chat")
-    current.set_attribute("llm.request.type", "chat")
-    current.set_attribute("llm.is_streaming", True)
-    current.set_attribute("gen_ai.request.model", model)
-    for key, value in params.items():
-        current.set_attribute(f"gen_ai.request.{key}", value)
-    current.set_attribute(
-        "gen_ai.system_instructions",
-        json.dumps([{"type": "text", "content": str(system)[:MAX_ATTR]}], ensure_ascii=False))
-    current.set_attribute(
-        "gen_ai.input.messages", json.dumps([_text_message("user", user)], ensure_ascii=False))
-
-
-def trace_output(current, answer: str, finish_reason: str = "stop") -> None:
-    """Record the model answer (gen_ai.output.messages)."""
-    if current is None:
-        return
-    current.set_attribute(
-        "gen_ai.output.messages",
-        json.dumps([_text_message("assistant", answer, finish_reason=finish_reason)], ensure_ascii=False))
-    current.set_attribute("gen_ai.response.finish_reasons", [finish_reason])
-
-
-def trace_usage(current, model: str, input_tokens: int, output_tokens: int) -> None:
-    """Record token usage for AI Observability cost/usage views."""
-    if current is None:
-        return
-    current.set_attribute("gen_ai.response.model", model)
-    current.set_attribute("gen_ai.usage.input_tokens", int(input_tokens))
-    current.set_attribute("gen_ai.usage.output_tokens", int(output_tokens))
-    current.set_attribute("llm.usage.total_tokens", int(input_tokens) + int(output_tokens))
+def task(name: str):
+    return _decorator("task", name)

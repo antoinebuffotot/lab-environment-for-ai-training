@@ -10,7 +10,7 @@ from pathlib import Path
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 
 # OpenLLMetry must be initialised BEFORE ollama / chromadb are imported (see rag.py)
-from app.telemetry import init_telemetry, is_enabled, span, trace_output, trace_prompt, trace_usage  # noqa: E402
+from app.telemetry import init_telemetry, is_enabled, task, workflow  # noqa: E402
 
 init_telemetry()
 
@@ -109,39 +109,50 @@ async def settings():
     return {**D, "system_prompt": rag.SYSTEM_PROMPT}
 
 
+@task("rag.retrieve")
+async def retrieve(question: str, passages: int) -> list[dict]:
+    return await rag.search(question, passages)
+
+
+@task("rag.generate")
+async def generate(messages: list[dict], sampling: dict):
+    """Stream the model answer; the LLM span itself comes from the OpenLLMetry Ollama instrumentation."""
+    async for part in await rag.chat_stream(messages, **sampling):
+        yield part
+
+
+@workflow("rag.chat")
+async def run_chat(req: ChatRequest):
+    """The whole chat turn, as SSE events."""
+    started = time.time()
+    sources: list[dict] = []
+    if req.use_rag:
+        sources = await retrieve(req.message, req.passages)
+        yield sse("sources", sources)
+
+    messages = rag.build_messages(req.message, req.history, sources, req.system_prompt)
+    sampling = {"temperature": req.temperature, "top_k": req.top_k, "top_p": req.top_p}
+    tokens, tps = 0, 0.0
+    async for part in generate(messages, sampling):
+        text = rag.field(rag.field(part, "message", {}), "content", "")
+        if text:
+            yield sse("token", {"text": text})
+        if rag.field(part, "done", False):
+            tokens = rag.field(part, "eval_count", 0)
+            duration = rag.field(part, "eval_duration", 0) / 1e9
+            tps = round(tokens / duration, 2) if duration else 0.0
+    yield sse("done", {"tokens": tokens, "tps": tps, "total_s": round(time.time() - started, 1)})
+
+
 @app.post("/api/chat")
 async def chat(req: ChatRequest):
     if not state["models_ready"]:
         raise HTTPException(503, "Le modèle est encore en cours de téléchargement.")
 
     async def stream():
-        started = time.time()
         try:
-            with span("rag.chat", kind="workflow", **{"rag.use_retrieval": req.use_rag}):
-                sources: list[dict] = []
-                if req.use_rag:
-                    with span("rag.retrieve", kind="task", **{"rag.passages": req.passages}):
-                        sources = await rag.search(req.message, req.passages)
-                    yield sse("sources", sources)
-
-                messages = rag.build_messages(req.message, req.history, sources, req.system_prompt)
-                sampling = {"temperature": req.temperature, "top_k": req.top_k, "top_p": req.top_p}
-                with span("rag.generate", kind="task", **{"rag.sources": len(sources)}) as gen:
-                    # traced: system instruction + the raw user question only (no history, no retrieved passages)
-                    trace_prompt(gen, messages[0]["content"], req.message, rag.LLM_MODEL, sampling)
-                    tokens, tps, answer = 0, 0.0, []
-                    async for part in await rag.chat_stream(messages, **sampling):
-                        text = rag.field(rag.field(part, "message", {}), "content", "")
-                        if text:
-                            answer.append(text)
-                            yield sse("token", {"text": text})
-                        if rag.field(part, "done", False):
-                            tokens = rag.field(part, "eval_count", 0)
-                            duration = rag.field(part, "eval_duration", 0) / 1e9
-                            tps = round(tokens / duration, 2) if duration else 0.0
-                            trace_output(gen, "".join(answer))
-                            trace_usage(gen, rag.LLM_MODEL, rag.field(part, "prompt_eval_count", 0), tokens)
-                yield sse("done", {"tokens": tokens, "tps": tps, "total_s": round(time.time() - started, 1)})
+            async for event in run_chat(req):
+                yield event
         except Exception as exc:
             log.exception("chat failed")
             yield sse("error", {"text": f"Erreur pendant la génération : {exc}"})
