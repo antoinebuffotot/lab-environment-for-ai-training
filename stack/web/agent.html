@@ -139,7 +139,8 @@
 
 <script src="common.js"></script>
 <script>
-const API = "/agent/api";
+const getJSON = async (url) => { const r = await fetch(url); if (!r.ok) throw new Error(url + " " + r.status); return r.json(); };
+const API = "/agent";   // nginx: /agent/api/* -> agent-api /api/*
 const I18N = {
   fr: {
     title: "Atelier IA", pageTitle: "Atelier IA - Agent", navChat: "Chat", navAgent: "Agent", tabsAria: "Panneau latéral",
@@ -316,7 +317,7 @@ function renderMcp() {
 }
 async function refreshHealth() {
   try {
-    health = await (await fetch(API + "/api/health")).json(); linkDown = false; loadSettings();
+    health = await getJSON(API + "/api/health"); linkDown = false; loadSettings();
     const sig = JSON.stringify(health.tools);
     if (sig !== toolsSig) { toolsSig = sig; loadTools(); }
   } catch { health = null; linkDown = true; }
@@ -335,7 +336,7 @@ function paintSettings() {
 }
 async function loadSettings() {
   if (settingsLoaded) return;
-  try { defaults = await (await fetch(API + "/api/settings")).json(); } catch { return; }
+  try { defaults = await getJSON(API + "/api/settings"); } catch { return; }
   let stored = {};
   try { stored = JSON.parse(localStorage.getItem("ailab.agent.settings") || "{}"); } catch {}
   settings = { ...defaults, ...stored };
@@ -351,7 +352,7 @@ $("s-reset").onclick = () => { settings = { ...defaults }; paintSettings(); save
 /* ---------- tools list ---------- */
 let toolsSig = "";
 async function loadTools() {
-  try { toolsInfo = await (await fetch(API + "/api/tools")).json(); } catch { toolsSig = ""; return; }
+  try { toolsInfo = await getJSON(API + "/api/tools"); } catch { toolsSig = ""; return; }
   const ul = $("tools-list"); ul.innerHTML = "";
   for (const tl of toolsInfo) {
     const li = document.createElement("li");
@@ -369,7 +370,7 @@ async function loadCode() {
   if (codeLoaded) return;
   $("code-body").textContent = t("obsLoading");
   try {
-    const j = await (await fetch(API + "/api/observability/code")).json();
+    const j = await getJSON(API + "/api/observability/code");
     $("code-file").textContent = j.file; $("code-body").textContent = j.code; codeLoaded = true;
   } catch { $("code-body").textContent = t("obsFail"); }
 }
