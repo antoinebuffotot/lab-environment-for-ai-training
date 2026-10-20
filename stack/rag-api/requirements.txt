@@ -6,3 +6,4 @@ ollama
 chromadb==0.6.3
 numpy<2
 traceloop-sdk
+mcp>=1.12,<2

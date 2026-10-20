@@ -36,6 +36,16 @@ cd lab-environment-for-ai-training;chmod +x ./*.sh
 ./azure-cli-deploy-vm-for-training-ai.sh
 ```
 
+
+## Agent IA (page `/agent.html`)
+
+Une seconde page, avec la même interface (langues, réglages, onglet Observability), propose une **application agentique** qui utilise le même modèle local qu'avec le chat. L'agent décide seul d'appeler des outils (`search_documents`, `list_documents`, `calculator`, `get_current_time`), lit les résultats et recommence jusqu'à pouvoir répondre (nombre d'étapes limité). Chaque étape et chaque appel d'outil s'affichent.
+
+- Service Docker `agent-api` (même image que `rag-api`, code dans `stack/rag-api/app/agent.py` et `agent_main.py`), joint via nginx sur `/agent/api/`.
+- OpenLLMetry suit `OPENLLMETRY_ENABLED` par défaut ; pour l'activer ou le désactiver sur l'agent seul : `sudo stack/scripts/set-agent-openllmetry.sh on <tenant> <token>` / `off`.
+- **Outils MCP (exercice participants)** : l'agent lit le fichier `mcp.json` que les participants créent eux-mêmes dans le VS Code web (dossier `/workspace/mcp` = `stack/mcp`, voir `stack/mcp/README.md` et `mcp.json.example`) pour se connecter à un serveur MCP distant, par exemple le serveur MCP Dynatrace. Rechargement automatique, aucun redémarrage.
+- Le service Dynatrace s'appelle `ai-lab-agent-api-<numéro de la VM>` (le chat reste `ai-lab-rag-api-<numéro>`). Traces : `agent.run` (@agent) > `agent.step` (@task) > appel LLM Ollama, plus un span par outil (@tool).
+
 ## Étape 1 - 20 environnements maximum
 
 ```

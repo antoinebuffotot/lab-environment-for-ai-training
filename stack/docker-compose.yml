@@ -65,12 +65,43 @@ services:
     volumes:
       - ./docs:/data/docs:ro
 
+  # Agentic AI : same image as rag-api, same local model, its own OpenLLMetry service (ai-lab-agent-api-<vm number>).
+  # OpenLLMetry follows OPENLLMETRY_ENABLED unless AGENT_OPENLLMETRY_ENABLED is set (scripts/set-agent-openllmetry.sh).
+  agent-api:
+    build: ./rag-api
+    container_name: agent-api
+    restart: unless-stopped
+    command: ["uvicorn", "app.agent_main:app", "--host", "0.0.0.0", "--port", "8000"]
+    depends_on:
+      - ollama
+      - chroma
+    environment:
+      OLLAMA_HOST: http://ollama:11434
+      CHROMA_HOST: chroma
+      CHROMA_PORT: "8000"
+      LLM_MODEL: ${LLM_MODEL:-qwen2.5:7b}
+      EMBED_MODEL: ${EMBED_MODEL:-nomic-embed-text}
+      DOCS_DIR: /data/docs
+      VM_FQDN: ${VM_FQDN:-localhost}
+      OPENLLMETRY_ENABLED: ${AGENT_OPENLLMETRY_ENABLED:-${OPENLLMETRY_ENABLED:-false}}
+      DT_TENANT: ${DT_TENANT:-}
+      DT_API_TOKEN: ${DT_API_TOKEN:-}
+      OTEL_SERVICE_NAME: ${AGENT_OTEL_SERVICE_NAME:-ai-lab-agent-api}
+      OPENLLMETRY_TRACE_CONTENT: ${OPENLLMETRY_TRACE_CONTENT:-true}
+      TRACELOOP_TELEMETRY: "false"
+      # mcp.json written by the participants in the VS Code web (/workspace/mcp) : MCP servers for the agent
+      MCP_CONFIG: /workspace/mcp/mcp.json
+    volumes:
+      - ./docs:/data/docs:ro
+      - ./mcp:/workspace/mcp:ro
+
   web:
     image: nginx:alpine
     container_name: web
     restart: unless-stopped
     depends_on:
       - rag-api
+      - agent-api
     ports:
       - "80:80"
     volumes:

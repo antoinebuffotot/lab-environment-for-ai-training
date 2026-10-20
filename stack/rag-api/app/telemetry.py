@@ -3,10 +3,13 @@
 Follows https://docs.dynatrace.com/docs/observe/dynatrace-for-ai-observability/get-started/openllmetry :
   - Traceloop.init(...) pointed at the tenant OTLP endpoint (disable_batch=True),
   - metrics temporality set to "delta",
-  - @workflow / @task decorators for the application activity (rag.chat, rag.retrieve, rag.generate).
+  - @workflow / @task / @agent / @tool decorators for the application activity
+    (chat: rag.chat, rag.retrieve, rag.generate - agent: agent.run, agent.step, one span per tool).
 The LLM span (model, parameters, token usage, prompt and completion) is produced by the SDK's own
-Ollama instrumentation: nothing is hand-written. Other instrumentations (ChromaDB, HTTP...) are blocked.
+Ollama instrumentation: nothing is hand-written, except a span_postprocess_callback that removes the
+conversation history from the exported prompt. Other instrumentations (ChromaDB, HTTP...) are blocked.
 """
+import json
 import logging
 import os
 import re
@@ -27,6 +30,56 @@ def _auth_header(token: str) -> dict:
     # classic access tokens (dt0c01.*) use "Api-Token", platform tokens (dt0s16.*) use "Bearer"
     scheme = "Api-Token" if token.startswith("dt0c01.") else "Bearer"
     return {"Authorization": f"{scheme} {token}"}
+
+
+# Marker of the message that carries the previous turns (see rag.build_messages). It is sent to the
+# model but removed from the exported LLM span, so Dynatrace only shows the current prompt.
+HISTORY_PREFIX = "Échanges précédents :"
+
+
+def _message_text(message) -> str:
+    """Text of one message, whether `content` is a string or a list of GenAI `parts`."""
+    if not isinstance(message, dict):
+        return ""
+    content = message.get("content")
+    if isinstance(content, str):
+        return content
+    parts = message.get("parts") or content or []
+    return "".join(p.get("content", "") for p in parts if isinstance(p, dict) and isinstance(p.get("content"), str))
+
+
+def _strip_history(span) -> None:
+    """span_postprocess_callback: drop the history message from the prompt recorded on the LLM span.
+
+    Handles both attribute layouts the Ollama instrumentation can use:
+      gen_ai.prompt.<i>.role / .content   (indexed attributes)
+      gen_ai.input.messages               (JSON list)
+    Token usage is left untouched: the model really did receive the history.
+    """
+    try:
+        attrs = span._attributes
+        raw = attrs.get("gen_ai.input.messages")
+        if isinstance(raw, str):
+            messages = json.loads(raw)
+            kept = [m for m in messages if not _message_text(m).startswith(HISTORY_PREFIX)]
+            if len(kept) != len(messages):
+                attrs["gen_ai.input.messages"] = json.dumps(kept, ensure_ascii=False)
+
+        indexed = {}
+        for key in list(attrs.keys()):
+            m = re.match(r"gen_ai\.prompt\.(\d+)\.(.+)$", key)
+            if m:
+                indexed.setdefault(int(m.group(1)), {})[m.group(2)] = attrs[key]
+        if any(str(f.get("content", "")).startswith(HISTORY_PREFIX) for f in indexed.values()):
+            for key in list(attrs.keys()):
+                if key.startswith("gen_ai.prompt."):
+                    del attrs[key]
+            kept = [f for _, f in sorted(indexed.items()) if not str(f.get("content", "")).startswith(HISTORY_PREFIX)]
+            for i, fields in enumerate(kept):
+                for name, value in fields.items():
+                    attrs[f"gen_ai.prompt.{i}.{name}"] = value
+    except Exception:  # never break the export
+        log.exception("could not strip history from the LLM span")
 
 
 def service_name() -> str:
@@ -64,6 +117,7 @@ def init_telemetry() -> bool:
             api_endpoint=f"https://{tenant}/api/v2/otlp",
             headers=_auth_header(token),
             disable_batch=True,
+            span_postprocess_callback=_strip_history,
             resource_attributes={
                 "deployment.environment": "ai-training",
                 "host.name": os.getenv("VM_FQDN", "localhost"),
@@ -80,6 +134,7 @@ def init_telemetry() -> bool:
             Traceloop.init(**kwargs)
         except TypeError:  # older SDK without `instruments`
             kwargs.pop("instruments", None)
+            kwargs.pop("span_postprocess_callback", None)
             Traceloop.init(**kwargs)
 
         _enabled = True
@@ -110,3 +165,11 @@ def workflow(name: str):
 
 def task(name: str):
     return _decorator("task", name)
+
+
+def agent(name: str):
+    return _decorator("agent", name)
+
+
+def tool(name: str):
+    return _decorator("tool", name)

@@ -10,6 +10,8 @@ import chromadb
 import ollama
 from chromadb.config import Settings
 
+from app.telemetry import HISTORY_PREFIX
+
 log = logging.getLogger("rag")
 
 OLLAMA_HOST = os.getenv("OLLAMA_HOST", "http://ollama:11434")
@@ -207,25 +209,27 @@ def build_messages(question: str, history: list[dict], sources: list[dict],
 
     1. the user question, alone (the first input shown by Dynatrace AI Observability),
     2. the system instruction,
-    3. one extra user message holding the supporting data: the RAG passages and the previous turns.
+    3. a user message with the RAG passages (if any),
+    4. a user message with the previous turns (if any), starting with HISTORY_PREFIX: it is sent to
+       the model but removed from the exported trace (see telemetry._strip_history).
     Ollama gathers every system message into the system prompt whatever its position.
     """
     messages = [
         {"role": "user", "content": question},
         {"role": "system", "content": system_prompt.strip() or SYSTEM_PROMPT},
     ]
-    extra = []
     if sources:
         context = "\n\n".join(f"[{s['n']}] (source : {s['source']})\n{s['text']}" for s in sources)
-        extra.append(f"Passages de documents :\n\n{context}")
+        messages.append({"role": "user", "content": (
+            f"Passages de documents :\n\n{context}\n\n"
+            "Réponds à la question de l'utilisateur ci-dessus en t'appuyant sur ces passages.")})
     previous = []
     for item in history[-6:]:
         role, content = item.get("role"), str(item.get("content", ""))[:4000]
         if role in ("user", "assistant") and content:
             previous.append(f"{'Utilisateur' if role == 'user' else 'Assistant'} : {content}")
     if previous:
-        extra.append("Échanges précédents :\n\n" + "\n\n".join(previous))
-    if extra:
-        extra.append("Réponds à la question de l'utilisateur ci-dessus en t'appuyant sur ces éléments.")
-        messages.append({"role": "user", "content": "\n\n".join(extra)})
+        messages.append({"role": "user", "content": (
+            f"{HISTORY_PREFIX}\n\n" + "\n\n".join(previous) + "\n\n"
+            "Tiens compte de ces échanges pour répondre à la question de l'utilisateur ci-dessus.")})
     return messages
