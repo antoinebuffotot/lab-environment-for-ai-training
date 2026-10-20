@@ -91,6 +91,19 @@
               "destinationAddressPrefix": "*",
               "destinationPortRange": "80"
             }
+          },
+          {
+            "name": "VSCode-web",
+            "properties": {
+              "priority": 1020,
+              "protocol": "Tcp",
+              "access": "Allow",
+              "direction": "Inbound",
+              "sourceAddressPrefix": "*",
+              "sourcePortRange": "*",
+              "destinationAddressPrefix": "*",
+              "destinationPortRange": "8080"
+            }
           }
         ]
       }

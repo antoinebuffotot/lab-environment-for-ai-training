@@ -77,6 +77,20 @@ services:
       - ./web:/usr/share/nginx/html:ro
       - ./nginx.conf:/etc/nginx/conf.d/default.conf:ro
 
+  # VS Code in the browser (code-server) : edit the stack (rag-api/app, docs, web...) from http://<vm>:8080/
+  vscode:
+    image: codercom/code-server:latest
+    container_name: vscode
+    restart: unless-stopped
+    user: "0:0"
+    environment:
+      PASSWORD: ${VSCODE_PASSWORD:-changeme}
+    command: ["--bind-addr", "0.0.0.0:8080", "--auth", "password", "/workspace"]
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./:/workspace
+
 volumes:
   ollama_data:
   chroma_data:

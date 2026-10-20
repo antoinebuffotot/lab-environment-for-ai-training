@@ -135,7 +135,7 @@ user02;aitraining02.francecentral.cloudapp.azure.com;http://aitraining02.francec
 | SSH | `ssh user00@aitraining00.francecentral.cloudapp.azure.com` |
 | API (via nginx) | `http://aitraining00.francecentral.cloudapp.azure.com/api/health` |
 
-Seuls les ports 22 et 80 sont ouverts. Ollama et ChromaDB ne sont joignables que depuis le réseau Docker de la VM : pour les interroger directement (par exemple `curl` sur l'API Ollama), publiez leur port dans `stack/docker-compose.yml` sur `127.0.0.1` et passez par un tunnel SSH.
+Seuls les ports 22, 80 et 8080 (VS Code web, protégé par le mot de passe de la VM) sont ouverts. Ollama et ChromaDB ne sont joignables que depuis le réseau Docker de la VM : pour les interroger directement (par exemple `curl` sur l'API Ollama), publiez leur port dans `stack/docker-compose.yml` sur `127.0.0.1` et passez par un tunnel SSH.
 
 Si l'option 5 vaut `N`, démarrez les VM depuis le portail Azure avant la formation. La pile redémarre toute seule (`restart: unless-stopped`) ; la première réponse est plus lente car le modèle est rechargé en mémoire.
 
@@ -192,7 +192,7 @@ Il supprime les groupes de ressources créés (`az group delete --no-wait`) et c
 
 ```
 azure-cli-deploy-vm-for-training-ai.sh   script principal et menu
-azuredeploy-ubuntu22.json                template ARM (VM, IP publique statique + DNS, NSG 22/80)
+azuredeploy-ubuntu22.json                template ARM (VM, IP publique statique + DNS, NSG 22/80/8080)
 vm-setup.sh                              installation sur la VM (Docker, pile IA), exécuté via az vm run-command
 env.sh                                   taille de VM, régions, modèles, valeurs par défaut
 stack/
