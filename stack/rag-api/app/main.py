@@ -114,34 +114,43 @@ async def retrieve(question: str, passages: int) -> list[dict]:
     return await rag.search(question, passages)
 
 
-@task("rag.generate")
-async def generate(messages: list[dict], sampling: dict):
-    """Stream the model answer; the LLM span itself comes from the OpenLLMetry Ollama instrumentation."""
-    async for part in await rag.chat_stream(messages, **sampling):
-        yield part
+def chat_turn(req: ChatRequest, queue: asyncio.Queue):
+    """Build the traced chat turn for one request.
 
+    Same shape as the Traceloop examples: plain (non-generator) functions under @workflow / @task, so
+    every span starts and ends cleanly and nests under rag.chat. The decorated functions only take
+    small arguments (the question) because Traceloop records a decorated function's arguments and
+    result as span input/output; the history and the retrieved passages are already in the LLM span.
+    The SSE events reach the HTTP response through `queue`.
+    """
+    result = {"tokens": 0, "tps": 0.0}
 
-@workflow("rag.chat")
-async def run_chat(req: ChatRequest):
-    """The whole chat turn, as SSE events."""
-    started = time.time()
-    sources: list[dict] = []
-    if req.use_rag:
-        sources = await retrieve(req.message, req.passages)
-        yield sse("sources", sources)
+    @workflow("rag.chat")
+    async def rag_chat(question: str) -> str:
+        sources: list[dict] = []
+        if req.use_rag:
+            sources = await retrieve(question, req.passages)
+            await queue.put(sse("sources", sources))
+        messages = rag.build_messages(question, req.history, sources, req.system_prompt)
 
-    messages = rag.build_messages(req.message, req.history, sources, req.system_prompt)
-    sampling = {"temperature": req.temperature, "top_k": req.top_k, "top_p": req.top_p}
-    tokens, tps = 0, 0.0
-    async for part in generate(messages, sampling):
-        text = rag.field(rag.field(part, "message", {}), "content", "")
-        if text:
-            yield sse("token", {"text": text})
-        if rag.field(part, "done", False):
-            tokens = rag.field(part, "eval_count", 0)
-            duration = rag.field(part, "eval_duration", 0) / 1e9
-            tps = round(tokens / duration, 2) if duration else 0.0
-    yield sse("done", {"tokens": tokens, "tps": tps, "total_s": round(time.time() - started, 1)})
+        @task("rag.generate")
+        async def generate() -> str:
+            answer = []
+            sampling = {"temperature": req.temperature, "top_k": req.top_k, "top_p": req.top_p}
+            async for part in await rag.chat_stream(messages, **sampling):
+                text = rag.field(rag.field(part, "message", {}), "content", "")
+                if text:
+                    answer.append(text)
+                    await queue.put(sse("token", {"text": text}))
+                if rag.field(part, "done", False):
+                    result["tokens"] = rag.field(part, "eval_count", 0)
+                    duration = rag.field(part, "eval_duration", 0) / 1e9
+                    result["tps"] = round(result["tokens"] / duration, 2) if duration else 0.0
+            return "".join(answer)
+
+        return await generate()
+
+    return rag_chat, result
 
 
 @app.post("/api/chat")
@@ -149,19 +158,41 @@ async def chat(req: ChatRequest):
     if not state["models_ready"]:
         raise HTTPException(503, "Le modèle est encore en cours de téléchargement.")
 
-    async def stream():
+    queue: asyncio.Queue = asyncio.Queue()
+    rag_chat, result = chat_turn(req, queue)
+
+    async def run():
+        started = time.time()
         try:
-            async for event in run_chat(req):
-                yield event
+            await rag_chat(req.message)
+            await queue.put(sse("done", {**result, "total_s": round(time.time() - started, 1)}))
         except Exception as exc:
             log.exception("chat failed")
-            yield sse("error", {"text": f"Erreur pendant la génération : {exc}"})
+            await queue.put(sse("error", {"text": f"Erreur pendant la génération : {exc}"}))
+        finally:
+            await queue.put(None)
+
+    async def stream():
+        # the turn runs in its own task (its own trace context); this generator only relays events
+        worker = asyncio.create_task(run())
+        try:
+            while (event := await queue.get()) is not None:
+                yield event
+        finally:
+            worker.cancel()
 
     return StreamingResponse(
         stream(),
         media_type="text/event-stream",
         headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
     )
+
+
+@app.get("/api/observability/code")
+async def observability_code():
+    """Source of the OpenLLMetry setup, shown in the web UI (Observability tab)."""
+    path = Path(__file__).with_name("telemetry.py")
+    return {"file": "app/telemetry.py", "code": path.read_text(encoding="utf-8")}
 
 
 @app.post("/api/search")

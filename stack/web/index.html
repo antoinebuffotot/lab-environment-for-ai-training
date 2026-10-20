@@ -118,6 +118,13 @@
   .kb-actions { display: flex; flex-direction: column; gap: 8px; }
   #kb-msg { margin: 10px 0 0; font-size: .82rem; color: var(--muted); min-height: 1.2em; }
 
+  .codeview { display: flex; flex-direction: column; min-height: 0; min-width: 0; padding: 16px 20px; gap: 10px; }
+  .codeview[hidden] { display: none; }
+  .codeview .file { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: .85rem; color: var(--muted); }
+  .codeview pre {
+    flex: 1; margin: 0; overflow: auto; padding: 12px 14px; border-radius: 8px; border: 1px solid var(--line);
+    background: var(--panel); font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: .82rem; line-height: 1.5; tab-size: 4;
+  }
   .chat { display: flex; flex-direction: column; min-height: 0; min-width: 0; }
   .notice {
     margin: 14px 20px 0; padding: 10px 14px; border-radius: 6px;
@@ -220,6 +227,7 @@
     <div class="tabs" role="tablist" data-i18n-aria="tabsAria" aria-label="Panneau latéral">
       <button type="button" role="tab" id="tab-settings" aria-controls="panel-settings" aria-selected="true" data-i18n="tabSettings">Paramètres</button>
       <button type="button" role="tab" id="tab-docs" aria-controls="panel-docs" aria-selected="false" tabindex="-1" data-i18n="tabDocs">Documents</button>
+      <button type="button" role="tab" id="tab-obs" aria-controls="panel-obs" aria-selected="false" tabindex="-1" data-i18n="tabObs">Observability</button>
     </div>
 
     <section id="panel-settings" role="tabpanel" aria-labelledby="tab-settings">
@@ -262,9 +270,18 @@
       </div>
       <p id="kb-msg" role="status"></p>
     </section>
+
+    <section id="panel-obs" role="tabpanel" aria-labelledby="tab-obs" hidden>
+      <p class="hint" data-i18n="obsHint">Code qui configure OpenLLMetry (Traceloop) pour envoyer les traces vers Dynatrace AI Observability.</p>
+    </section>
   </aside>
 
-  <main class="chat">
+  <main class="codeview" id="codeview" hidden>
+    <div class="file" id="code-file">app/telemetry.py</div>
+    <pre><code id="code-body"></code></pre>
+  </main>
+
+  <main class="chat" id="chatview">
     <div id="notice" class="notice" hidden></div>
     <div id="log" role="log" aria-live="polite">
       <div class="col" id="messages">
@@ -299,7 +316,7 @@ let history = [], busy = false, health = null, wasReady = false;
 /* ---------- i18n ---------- */
 const I18N = {
   fr: {
-    title: "Atelier IA", pageTitle: "Atelier IA - Chat", tabsAria: "Panneau latéral", tabSettings: "Paramètres", tabDocs: "Documents",
+    title: "Atelier IA", pageTitle: "Atelier IA - Chat", tabsAria: "Panneau latéral", tabSettings: "Paramètres", tabDocs: "Documents", tabObs: "Observability", obsHint: "Code qui configure OpenLLMetry (Traceloop) pour envoyer les traces vers Dynatrace AI Observability.", obsLoading: "Chargement du code…", obsFail: "Code indisponible.",
     temp: "Température", tempHint: "Basse : réponses stables et prévisibles. Haute : réponses plus variées.",
     topk: "Top K", topkHint: "Nombre de jetons candidats examinés à chaque étape. Bas : plus prudent.",
     topp: "Top P", toppHint: "Ne garde que les candidats dont la probabilité cumulée atteint cette valeur.",
@@ -330,7 +347,7 @@ const I18N = {
     metaDone: "{n} jetons, {tps} jetons/s, {total} s au total. Réglages : température {t}, top K {k}, top P {p}.",
   },
   en: {
-    title: "AI Workshop", pageTitle: "AI Workshop - Chat", tabsAria: "Side panel", tabSettings: "Settings", tabDocs: "Documents",
+    title: "AI Workshop", pageTitle: "AI Workshop - Chat", tabsAria: "Side panel", tabSettings: "Settings", tabDocs: "Documents", tabObs: "Observability", obsHint: "Code that configures OpenLLMetry (Traceloop) to send traces to Dynatrace AI Observability.", obsLoading: "Loading code…", obsFail: "Code unavailable.",
     temp: "Temperature", tempHint: "Low: stable, predictable answers. High: more varied answers.",
     topk: "Top K", topkHint: "Number of candidate tokens considered at each step. Low: more cautious.",
     topp: "Top P", toppHint: "Keeps only the candidates whose cumulative probability reaches this value.",
@@ -361,7 +378,7 @@ const I18N = {
     metaDone: "{n} tokens, {tps} tokens/s, {total} s total. Settings: temperature {t}, top K {k}, top P {p}.",
   },
   es: {
-    title: "Taller de IA", pageTitle: "Taller de IA - Chat", tabsAria: "Panel lateral", tabSettings: "Ajustes", tabDocs: "Documentos",
+    title: "Taller de IA", pageTitle: "Taller de IA - Chat", tabsAria: "Panel lateral", tabSettings: "Ajustes", tabDocs: "Documentos", tabObs: "Observability", obsHint: "Código que configura OpenLLMetry (Traceloop) para enviar las trazas a Dynatrace AI Observability.", obsLoading: "Cargando el código…", obsFail: "Código no disponible.",
     temp: "Temperatura", tempHint: "Baja: respuestas estables y predecibles. Alta: respuestas más variadas.",
     topk: "Top K", topkHint: "Número de tokens candidatos examinados en cada paso. Bajo: más prudente.",
     topp: "Top P", toppHint: "Conserva solo los candidatos cuya probabilidad acumulada alcanza este valor.",
@@ -392,7 +409,7 @@ const I18N = {
     metaDone: "{n} tokens, {tps} tokens/s, {total} s en total. Ajustes: temperatura {t}, top K {k}, top P {p}.",
   },
   de: {
-    title: "KI-Workshop", pageTitle: "KI-Workshop - Chat", tabsAria: "Seitenleiste", tabSettings: "Einstellungen", tabDocs: "Dokumente",
+    title: "KI-Workshop", pageTitle: "KI-Workshop - Chat", tabsAria: "Seitenleiste", tabSettings: "Einstellungen", tabDocs: "Dokumente", tabObs: "Observability", obsHint: "Code, der OpenLLMetry (Traceloop) konfiguriert, um Traces an Dynatrace AI Observability zu senden.", obsLoading: "Code wird geladen…", obsFail: "Code nicht verfügbar.",
     temp: "Temperatur", tempHint: "Niedrig: stabile, vorhersehbare Antworten. Hoch: abwechslungsreichere Antworten.",
     topk: "Top K", topkHint: "Anzahl der in jedem Schritt geprüften Kandidaten-Tokens. Niedrig: vorsichtiger.",
     topp: "Top P", toppHint: "Behält nur die Kandidaten, deren kumulierte Wahrscheinlichkeit diesen Wert erreicht.",
@@ -423,7 +440,7 @@ const I18N = {
     metaDone: "{n} Tokens, {tps} Tokens/s, {total} s insgesamt. Einstellungen: Temperatur {t}, Top K {k}, Top P {p}.",
   },
   it: {
-    title: "Laboratorio IA", pageTitle: "Laboratorio IA - Chat", tabsAria: "Pannello laterale", tabSettings: "Impostazioni", tabDocs: "Documenti",
+    title: "Laboratorio IA", pageTitle: "Laboratorio IA - Chat", tabsAria: "Pannello laterale", tabSettings: "Impostazioni", tabDocs: "Documenti", tabObs: "Observability", obsHint: "Codice che configura OpenLLMetry (Traceloop) per inviare le tracce a Dynatrace AI Observability.", obsLoading: "Caricamento del codice…", obsFail: "Codice non disponibile.",
     temp: "Temperatura", tempHint: "Bassa: risposte stabili e prevedibili. Alta: risposte più varie.",
     topk: "Top K", topkHint: "Numero di token candidati esaminati a ogni passo. Basso: più prudente.",
     topp: "Top P", toppHint: "Mantiene solo i candidati la cui probabilità cumulativa raggiunge questo valore.",
@@ -600,12 +617,24 @@ $("s-reset").onclick = () => { settings = { ...defaults }; paintSettings(); save
 paintSettings();
 
 /* ---------- side panel tabs ---------- */
-const tabs = [["tab-settings", "panel-settings"], ["tab-docs", "panel-docs"]];
+const tabs = [["tab-settings", "panel-settings"], ["tab-docs", "panel-docs"], ["tab-obs", "panel-obs"]];
 function selectTab(i) {
-  tabs.forEach(([t, p], j) => {
-    $(t).setAttribute("aria-selected", j === i); $(t).tabIndex = j === i ? 0 : -1; $(p).hidden = j !== i;
+  tabs.forEach(([tab, panel], j) => {
+    $(tab).setAttribute("aria-selected", j === i); $(tab).tabIndex = j === i ? 0 : -1; $(panel).hidden = j !== i;
   });
+  const obs = tabs[i][0] === "tab-obs";
+  $("chatview").hidden = obs; $("codeview").hidden = !obs;
+  if (obs) loadCode();
   $(tabs[i][0]).focus();
+}
+let codeLoaded = false;
+async function loadCode() {
+  if (codeLoaded) return;
+  $("code-body").textContent = t("obsLoading");
+  try {
+    const j = await (await fetch("/api/observability/code")).json();
+    $("code-file").textContent = j.file; $("code-body").textContent = j.code; codeLoaded = true;
+  } catch { $("code-body").textContent = t("obsFail"); }
 }
 tabs.forEach(([t], i) => {
   $(t).addEventListener("click", () => selectTab(i));

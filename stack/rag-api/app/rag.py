@@ -203,15 +203,29 @@ async def search(query: str, k: int = 3) -> list[dict]:
 
 def build_messages(question: str, history: list[dict], sources: list[dict],
                    system_prompt: str = "") -> list[dict]:
-    messages = [{"role": "system", "content": system_prompt.strip() or SYSTEM_PROMPT}]
+    """Messages sent to the model, ordered for readable traces.
+
+    1. the user question, alone (the first input shown by Dynatrace AI Observability),
+    2. the system instruction,
+    3. one extra user message holding the supporting data: the RAG passages and the previous turns.
+    Ollama gathers every system message into the system prompt whatever its position.
+    """
+    messages = [
+        {"role": "user", "content": question},
+        {"role": "system", "content": system_prompt.strip() or SYSTEM_PROMPT},
+    ]
+    extra = []
+    if sources:
+        context = "\n\n".join(f"[{s['n']}] (source : {s['source']})\n{s['text']}" for s in sources)
+        extra.append(f"Passages de documents :\n\n{context}")
+    previous = []
     for item in history[-6:]:
         role, content = item.get("role"), str(item.get("content", ""))[:4000]
         if role in ("user", "assistant") and content:
-            messages.append({"role": role, "content": content})
-    if sources:
-        context = "\n\n".join(f"[{s['n']}] (source : {s['source']})\n{s['text']}" for s in sources)
-        user = f"Passages de documents :\n\n{context}\n\nQuestion : {question}"
-    else:
-        user = question
-    messages.append({"role": "user", "content": user})
+            previous.append(f"{'Utilisateur' if role == 'user' else 'Assistant'} : {content}")
+    if previous:
+        extra.append("Échanges précédents :\n\n" + "\n\n".join(previous))
+    if extra:
+        extra.append("Réponds à la question de l'utilisateur ci-dessus en t'appuyant sur ces éléments.")
+        messages.append({"role": "user", "content": "\n\n".join(extra)})
     return messages
