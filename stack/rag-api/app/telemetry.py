@@ -9,6 +9,7 @@ Ollama instrumentation: nothing is hand-written. Other instrumentations (ChromaD
 """
 import logging
 import os
+import re
 
 # Forced (not setdefault) : these must not be changed by a stray environment variable.
 os.environ["TRACELOOP_TELEMETRY"] = "false"                          # Traceloop's own usage statistics
@@ -26,6 +27,17 @@ def _auth_header(token: str) -> dict:
     # classic access tokens (dt0c01.*) use "Api-Token", platform tokens (dt0s16.*) use "Bearer"
     scheme = "Api-Token" if token.startswith("dt0c01.") else "Bearer"
     return {"Authorization": f"{scheme} {token}"}
+
+
+def service_name() -> str:
+    """Service name suffixed with the VM number taken from the host name.
+
+    aitraining03.francecentral.cloudapp.azure.com -> ai-lab-rag-api-03 (no suffix if no digits).
+    """
+    base = os.getenv("OTEL_SERVICE_NAME", "ai-lab-rag-api")
+    first_label = os.getenv("VM_FQDN", "").split(".")[0]
+    number = re.search(r"(\d+)$", first_label)
+    return f"{base}-{number.group(1)}" if number else base
 
 
 def init_telemetry() -> bool:
@@ -48,7 +60,7 @@ def init_telemetry() -> bool:
         from traceloop.sdk import Traceloop
 
         kwargs = dict(
-            app_name=os.getenv("OTEL_SERVICE_NAME", "ai-lab-rag-api"),
+            app_name=service_name(),
             api_endpoint=f"https://{tenant}/api/v2/otlp",
             headers=_auth_header(token),
             disable_batch=True,
@@ -71,8 +83,8 @@ def init_telemetry() -> bool:
             Traceloop.init(**kwargs)
 
         _enabled = True
-        log.info("OpenLLMetry enabled -> %s (trace content: %s)", kwargs["api_endpoint"],
-                 os.environ["TRACELOOP_TRACE_CONTENT"])
+        log.info("OpenLLMetry enabled: service %s -> %s (trace content: %s)", kwargs["app_name"],
+                 kwargs["api_endpoint"], os.environ["TRACELOOP_TRACE_CONTENT"])
         return True
     except Exception:  # never prevent the app from starting
         log.exception("OpenLLMetry initialisation failed: telemetry disabled")
