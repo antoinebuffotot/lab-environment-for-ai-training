@@ -61,6 +61,8 @@ services:
       OTEL_SERVICE_NAME: ${OTEL_SERVICE_NAME:-ai-lab-rag-api}
       # OpenLLMetry records prompts and completions in the LLM span (set to false to keep content out)
       OPENLLMETRY_TRACE_CONTENT: ${OPENLLMETRY_TRACE_CONTENT:-true}
+      # true = keep the RAG passages in the exported prompt (needed by dt-evals faithfulness; scripts/set-rag-context.sh)
+      OPENLLMETRY_KEEP_RAG: ${OPENLLMETRY_KEEP_RAG:-false}
       TRACELOOP_TELEMETRY: "false"
     volumes:
       - ./docs:/data/docs:ro
@@ -88,12 +90,25 @@ services:
       DT_API_TOKEN: ${DT_API_TOKEN:-}
       OTEL_SERVICE_NAME: ${AGENT_OTEL_SERVICE_NAME:-ai-lab-agent-api}
       OPENLLMETRY_TRACE_CONTENT: ${OPENLLMETRY_TRACE_CONTENT:-true}
+      OPENLLMETRY_KEEP_RAG: ${OPENLLMETRY_KEEP_RAG:-false}
       TRACELOOP_TELEMETRY: "false"
       # mcp.json written by the participants in the VS Code web (/workspace/mcp) : MCP servers for the agent
       MCP_CONFIG: /workspace/mcp/mcp.json
+      # context window of the agent (tools + MCP results + answer); raise it if answers are cut
+      AGENT_NUM_CTX: ${AGENT_NUM_CTX:-8192}
+      # MCP tools are used through a Dynatrace sub-agent (own context); false = give them to the main agent
+      MCP_SUBAGENT: ${MCP_SUBAGENT:-true}
+      DT_AGENT_MAX_STEPS: ${DT_AGENT_MAX_STEPS:-4}
+      # dtctl (Dynatrace CLI): configured by the participants in the VS Code web terminal, same file
+      DTCTL_CONFIG: /workspace/mcp/dtctl-config
+      DTCTL_CONTEXT: ${DTCTL_CONTEXT:-}
+      # skills (SKILL.md) copied by the participants into stack/skills
+      SKILLS_DIR: /workspace/skills
+      SKILL_MAX_CHARS: ${SKILL_MAX_CHARS:-6000}
     volumes:
       - ./docs:/data/docs:ro
       - ./mcp:/workspace/mcp:ro
+      - ./skills:/workspace/skills:ro
 
   web:
     image: nginx:alpine
@@ -122,6 +137,13 @@ services:
       OLLAMA_HOST: http://ollama:11434
       LLM_MODEL: ${LLM_MODEL:-qwen2.5:7b}
       EMBED_MODEL: ${EMBED_MODEL:-nomic-embed-text}
+      # `dtctl config ...` run in the terminal writes the file read by the agent
+      DTCTL_CONFIG: /workspace/mcp/dtctl-config
+      # dt-evals (LLM-as-a-judge on the traces): tenant, judge provider and the trainer's shared judge key
+      DT_TENANT: ${DT_TENANT:-}
+      JUDGE_PROVIDER: ${JUDGE_PROVIDER:-openai}
+      JUDGE_MODEL: ${JUDGE_MODEL:-}
+      JUDGE_API_KEY: ${JUDGE_API_KEY:-}
     ports:
       - "8080:8080"
     volumes:

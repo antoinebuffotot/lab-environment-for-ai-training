@@ -7,7 +7,7 @@ Follows https://docs.dynatrace.com/docs/observe/dynatrace-for-ai-observability/g
     (chat: rag.chat, rag.retrieve, rag.generate - agent: agent.run, agent.step, one span per tool).
 The LLM span (model, parameters, token usage, prompt and completion) is produced by the SDK's own
 Ollama instrumentation: nothing is hand-written, except a span_postprocess_callback that removes the
-conversation history from the exported prompt. Other instrumentations (ChromaDB, HTTP...) are blocked.
+conversation history and the RAG passages from the exported prompt. Other instrumentations (ChromaDB, HTTP...) are blocked.
 """
 import json
 import logging
@@ -32,9 +32,16 @@ def _auth_header(token: str) -> dict:
     return {"Authorization": f"{scheme} {token}"}
 
 
-# Marker of the message that carries the previous turns (see rag.build_messages). It is sent to the
-# model but removed from the exported LLM span, so Dynatrace only shows the current prompt.
+# Markers of the messages that carry the previous turns and the RAG passages (see rag.build_messages).
+# They are sent to the model but removed from the exported LLM span, so Dynatrace only shows the
+# current question and the system instruction.
 HISTORY_PREFIX = "Échanges précédents :"
+RAG_PREFIX = "Passages de documents :"
+def _is_stripped(text) -> bool:
+    """History is always removed from the exported prompt; the RAG passages too, unless OPENLLMETRY_KEEP_RAG is on
+    (LLM-judge evaluations such as dt-evals need the retrieved context to judge faithfulness)."""
+    prefixes = (HISTORY_PREFIX,) if _truthy(os.getenv("OPENLLMETRY_KEEP_RAG", "false")) else (HISTORY_PREFIX, RAG_PREFIX)
+    return str(text).startswith(prefixes)
 
 
 def _message_text(message) -> str:
@@ -49,19 +56,19 @@ def _message_text(message) -> str:
 
 
 def _strip_history(span) -> None:
-    """span_postprocess_callback: drop the history message from the prompt recorded on the LLM span.
+    """span_postprocess_callback: drop the history and RAG messages from the prompt recorded on the LLM span.
 
     Handles both attribute layouts the Ollama instrumentation can use:
       gen_ai.prompt.<i>.role / .content   (indexed attributes)
       gen_ai.input.messages               (JSON list)
-    Token usage is left untouched: the model really did receive the history.
+    Token usage is left untouched: the model really did receive these messages.
     """
     try:
         attrs = span._attributes
         raw = attrs.get("gen_ai.input.messages")
         if isinstance(raw, str):
             messages = json.loads(raw)
-            kept = [m for m in messages if not _message_text(m).startswith(HISTORY_PREFIX)]
+            kept = [m for m in messages if not _is_stripped(_message_text(m))]
             if len(kept) != len(messages):
                 attrs["gen_ai.input.messages"] = json.dumps(kept, ensure_ascii=False)
 
@@ -70,11 +77,11 @@ def _strip_history(span) -> None:
             m = re.match(r"gen_ai\.prompt\.(\d+)\.(.+)$", key)
             if m:
                 indexed.setdefault(int(m.group(1)), {})[m.group(2)] = attrs[key]
-        if any(str(f.get("content", "")).startswith(HISTORY_PREFIX) for f in indexed.values()):
+        if any(_is_stripped(f.get("content", "")) for f in indexed.values()):
             for key in list(attrs.keys()):
                 if key.startswith("gen_ai.prompt."):
                     del attrs[key]
-            kept = [f for _, f in sorted(indexed.items()) if not str(f.get("content", "")).startswith(HISTORY_PREFIX)]
+            kept = [f for _, f in sorted(indexed.items()) if not _is_stripped(f.get("content", ""))]
             for i, fields in enumerate(kept):
                 for name, value in fields.items():
                     attrs[f"gen_ai.prompt.{i}.{name}"] = value

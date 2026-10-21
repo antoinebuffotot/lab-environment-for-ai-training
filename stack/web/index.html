@@ -306,7 +306,7 @@ function buildLangSwitcher() {
 function setLang(code) {
   lang = code;
   try { localStorage.setItem("ailab.lang", code); } catch {}
-  applyStaticTexts(); renderStatus(); paintSettings();
+  applyStaticTexts(); renderStatus(); syncPrompt(); paintSettings();
   if (wasReady) loadDocs();
   document.querySelectorAll(".thinking").forEach((el) => { el.textContent = t("thinking"); });
 }
@@ -404,7 +404,7 @@ async function loadSettings() {
   let stored = {};
   try { stored = JSON.parse(localStorage.getItem("ailab.settings") || "{}"); } catch {}
   settings = { ...defaults, ...stored };
-  if (!settings.system_prompt) settings.system_prompt = defaults.system_prompt;
+  if (isDefaultPrompt(settings.system_prompt)) settings.system_prompt = defaultPrompt();
   settingsLoaded = true; paintSettings();
 }
 for (const [key, inputId, outId, digits] of FIELDS) {
@@ -413,7 +413,15 @@ for (const [key, inputId, outId, digits] of FIELDS) {
   });
 }
 $("s-system").addEventListener("input", (e) => { settings.system_prompt = e.target.value; saveSettings(); });
-$("s-reset").onclick = () => { settings = { ...defaults }; paintSettings(); saveSettings(); };
+
+/* default system message / agent instruction: follows the selected language until the participant edits it */
+const allDefaultPrompts = () => [defaults.system_prompt, ...Object.values(defaults.system_prompts || {})];
+const defaultPrompt = () => (defaults.system_prompts || {})[lang] || defaults.system_prompt;
+const isDefaultPrompt = (text) => !String(text || "").trim() || allDefaultPrompts().includes(text);
+function syncPrompt() {
+  if (settingsLoaded && isDefaultPrompt(settings.system_prompt)) { settings.system_prompt = defaultPrompt(); saveSettings(); }
+}
+$("s-reset").onclick = () => { settings = { ...defaults, system_prompt: defaultPrompt() }; paintSettings(); saveSettings(); };
 paintSettings();
 
 /* ---------- side panel tabs ---------- */
@@ -481,6 +489,14 @@ $("reindex").onclick = async () => {
   loadDocs(); refreshHealth();
 };
 
+
+/* conversation kept while moving between the Chat and Agent pages (sessionStorage) */
+const TURNS_KEY = "ailab.chat.turns";
+let turns = [];
+try { turns = JSON.parse(sessionStorage.getItem(TURNS_KEY) || "[]"); } catch {}
+function saveTurns() { try { sessionStorage.setItem(TURNS_KEY, JSON.stringify(turns.slice(-30))); } catch {} }
+history = turns.flatMap((x) => [{ role: "user", content: x.q }, { role: "assistant", content: x.a }]);
+
 /* ---------- chat ---------- */
 const scrollDown = () => { logEl.scrollTop = logEl.scrollHeight; };
 
@@ -521,6 +537,22 @@ messages.addEventListener("keydown", (e) => {
   if ((e.key === "Enter" || e.key === " ") && e.target.classList.contains("cite")) { e.preventDefault(); e.target.click(); }
 });
 
+
+function renderTurn(turn) {
+  addUser(turn.q);
+  const bot = addBot();
+  bot.querySelector(".body").innerHTML = md(turn.a);
+  showSources(bot, turn.sources || []);
+  const m = turn.meta;
+  if (m) bot.querySelector(".meta").textContent = t("metaDone", { n: m.tokens, tps: m.tps, total: m.total_s,
+    t: fmt(m.temperature, 2), k: m.top_k, p: fmt(m.top_p, 2) });
+}
+function restoreTurns() {
+  if (!turns.length) return;
+  const empty = $("empty"); if (empty) empty.remove();
+  turns.forEach(renderTurn);
+}
+
 async function ask(question) {
   if (busy || !question.trim()) return;
   busy = true; updateSend();
@@ -528,7 +560,7 @@ async function ask(question) {
   addUser(question);
   const bot = addBot(), body = bot.querySelector(".body"), meta = bot.querySelector(".meta");
   const used = { ...settings };
-  let answer = "", count = 0, t0 = 0, errored = false, final = null;
+  let answer = "", count = 0, t0 = 0, errored = false, final = null, srcs = [];
   const render = () => { body.innerHTML = md(answer); scrollDown(); };
 
   try {
@@ -552,7 +584,7 @@ async function ask(question) {
         for (const line of raw.split("\n")) { if (line.startsWith("event:")) ev = line.slice(6).trim(); else if (line.startsWith("data:")) data += line.slice(5).trim(); }
         if (!data) continue;
         const j = JSON.parse(data);
-        if (ev === "sources") showSources(bot, j);
+        if (ev === "sources") { srcs = j; showSources(bot, j); }
         else if (ev === "token") {
           if (!t0) t0 = performance.now();
           answer += j.text; count++; render();
@@ -570,7 +602,12 @@ async function ask(question) {
     errored = true;
     body.innerHTML = '<p class="err"></p>'; body.querySelector(".err").textContent = err.message;
   }
-  if (!errored && answer) { history.push({ role: "user", content: question }, { role: "assistant", content: answer }); }
+  if (!errored && answer) {
+    history.push({ role: "user", content: question }, { role: "assistant", content: answer });
+    turns.push({ q: question, a: answer, sources: srcs,
+      meta: final && { tokens: final.tokens, tps: final.tps, total_s: final.total_s, temperature: used.temperature, top_k: used.top_k, top_p: used.top_p } });
+    saveTurns();
+  }
   busy = false; updateSend(); qEl.focus();
 }
 
@@ -578,6 +615,7 @@ $("composer").addEventListener("submit", (e) => { e.preventDefault(); const q = 
 qEl.addEventListener("keydown", (e) => { if (e.key === "Enter" && !e.shiftKey && !e.isComposing) { e.preventDefault(); $("composer").requestSubmit(); } });
 document.querySelectorAll(".starters button").forEach((b) => b.addEventListener("click", () => ask(b.textContent)));
 
+restoreTurns();
 buildLangSwitcher(); applyStaticTexts(); renderStatus();
 refreshHealth();
 setInterval(refreshHealth, 5000);

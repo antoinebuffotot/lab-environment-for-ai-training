@@ -22,7 +22,7 @@ APPLY="N"
 
 save_config() {
   {
-    for v in DOMAIN_NAME_DEFAULT PASSWORD START_ENV NBENV OPENLLMETRY_ENABLED VM_STARTED MyTenant MyToken; do
+    for v in DOMAIN_NAME_DEFAULT PASSWORD START_ENV NBENV OPENLLMETRY_ENABLED VM_STARTED MyTenant MyToken JUDGE_PROVIDER JUDGE_MODEL JUDGE_API_KEY; do
       printf '%s=%q\n' "$v" "${!v}"
     done
   } > "$CONF_FILE"
@@ -43,6 +43,7 @@ location_of() {
 }
 
 mask_token() { if [ -n "$MyToken" ]; then echo "${MyToken:0:14}***"; fi; }
+mask_judge_key() { if [ -n "$JUDGE_API_KEY" ]; then echo "${JUDGE_API_KEY:0:6}***"; fi; }
 
 valid_domain() {
   local re='^[a-z]{5}[a-z0-9]{0,40}$'
@@ -86,6 +87,9 @@ build_setup_script() {
   echo "VM_FQDN='$fqdn'"
   echo "LAB_USER='$user'"
   echo "VSCODE_PASSWORD='$PASSWORD'"
+  echo "JUDGE_PROVIDER='$JUDGE_PROVIDER'"
+  echo "JUDGE_MODEL='$JUDGE_MODEL'"
+  echo "JUDGE_API_KEY='$JUDGE_API_KEY'"
   echo "LLM_MODEL='$LLM_MODEL'"
   echo "EMBED_MODEL='$EMBED_MODEL'"
   echo "OPENLLMETRY_ENABLED='$otel'"
@@ -149,6 +153,7 @@ echo " - AI model        : $LLM_MODEL (+ $EMBED_MODEL for the embeddings) served
 echo " - RAG services    : ChromaDB + RAG API (FastAPI)"
 echo " - Web chat        : http://<vm>/ (port 80)"
 echo " - Agentic AI      : http://<vm>/agent.html (same model, tools + step-by-step trace)"
+echo " - dt-evals        : LLM judge on the traces, run from the VS Code web terminal (needs the judge key, menu 2 of the OpenLLMetry parameters)"
 echo " - VS Code web     : http://<vm>:8080/ (code-server, password = the VM password)"
 echo " - Observability   : OpenLLMetry (optional, traces the prompt and the current activity only)"
 echo ""
@@ -254,10 +259,12 @@ then
     echo ""
     echo "0) Tenant (without https://) ="$MyTenant
     echo "1) Token (scope : openTelemetryTrace.ingest) ="$(mask_token)
+    echo "2) LLM judge for dt-evals (optional) : provider ="$JUDGE_PROVIDER" (openai | anthropic | gemini)"
+    echo "3) LLM judge for dt-evals (optional) : shared API key ="$(mask_judge_key)
     echo "A) apply and deploy the VM - (Ctrl/c to quit)"
     echo ""
 
-    read -r -p "Input Selection (0, 1 or A): " reponse
+    read -r -p "Input Selection (0, 1, 2, 3 or A): " reponse
 
     case "$reponse" in
       "0") verif="ko"
@@ -273,6 +280,16 @@ then
              if valid_token "$value"; then verif="ok"; MyToken=$value; save_config
              else echo "bad API Token"; fi
            done
+           ;;
+      "2") verif="ko"
+           until [ $verif = "ok" ]; do
+             read -r -p "2) Judge provider (openai | anthropic | gemini) : " value
+             case "$value" in openai|anthropic|gemini) verif="ok"; JUDGE_PROVIDER=$value; save_config ;; *) echo "bad provider" ;; esac
+           done
+           ;;
+      "3") read -r -s -p "3) Judge API key (shared with all the participants, use a budget-limited key) : " value; echo ""
+           if [[ $value =~ ^[A-Za-z0-9_.-]*$ ]]; then JUDGE_API_KEY=$value; save_config
+           else echo "bad key (allowed characters : A-Z a-z 0-9 _ . -)"; fi
            ;;
       "A"|"a") if [ -n "$MyTenant" ] && [ -n "$MyToken" ]; then APPLY="Y"
                else echo "Tenant and Token are required when OpenLLMetry is enabled"; fi

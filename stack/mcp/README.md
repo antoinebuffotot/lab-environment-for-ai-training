@@ -31,3 +31,35 @@ Ouvrez la page de l'agent, onglet **Outils** : une ligne « Serveurs MCP » indi
 Aucun redémarrage n'est nécessaire (rechargement automatique dans la minute).
 Puis posez une question, par exemple : « Quels problèmes sont ouverts dans Dynatrace ? ».
 Avec OpenLLMetry actif, chaque appel MCP apparaît dans la trace comme un span d'outil.
+
+---
+
+# Exercice : donner dtctl à l'agent
+
+`dtctl` est la ligne de commande de Dynatrace (https://github.com/Dynatrace/dtctl), installée dans le VS Code web et dans
+l'image de l'agent. Une fois configurée, l'agent (sous-agent Dynatrace) l'utilise comme outil en **lecture seule**
+(`query`, `get`, `describe`, `logs`, `inventory`, `commands`, `exec copilot nl2dql|dql2nl`).
+
+## 1. Créer un token plateforme en lecture seule
+Account Management > **My platform tokens**. Pour connaître les droits minimaux de vos commandes :
+`dtctl commands --required-scopes`. Pour des requêtes simples, `storage:logs:read`, `storage:events:read`,
+`storage:metrics:read`, `storage:spans:read`, `storage:entities:read`, `storage:smartscape:read`,
+`davis:analyzers:read`, `app-engine:apps:run`, `document:documents:read` en sont un bon point de départ.
+Le niveau de sécurité `readonly` de dtctl n'est appliqué que côté client : c'est le token qui protège vraiment.
+
+## 2. Configurer dtctl (terminal du VS Code web)
+```bash
+dtctl config set-context formation   --environment "https://<environnement>.apps.dynatrace.com"   --token-ref formation-token   --safety-level readonly
+dtctl config set-credentials formation-token --token "dt0s16.XXXX.YYYY"
+dtctl doctor
+```
+La configuration est écrite dans `/workspace/mcp/dtctl-config` (variable `DTCTL_CONFIG` déjà positionnée), le fichier
+que lit l'agent. Il contient le token : ne le partagez pas (ignoré par git). Si dtctl demande un contexte courant,
+vérifiez `dtctl config --help` ou renseignez `DTCTL_CONTEXT` dans `stack/.env`.
+
+## 3. Vérifier
+Page de l'agent, onglet **Outils** : la ligne « dtctl » doit indiquer « prêt (lecture seule) ». Posez ensuite une question
+sur votre environnement : la trace montre le sous-agent qui appelle `dtctl`, comme il appelle les outils MCP.
+Les commandes qui modifient quoi que ce soit (`apply`, `create`, `edit`, `delete`, `config`, `auth`...) sont refusées
+par l'agent.
+

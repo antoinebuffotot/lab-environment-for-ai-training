@@ -25,3 +25,8 @@ VM_STARTED='N'                   # N = VM deallocated after installation
 # Dynatrace (only used if OpenLLMetry is enabled)
 MyTenant=''                      # <id>.live.dynatrace.com
 MyToken=''                       # dt0c01.xxx.yyy
+
+# LLM judge for dt-evals (trainer's shared key, available in the VS Code web of every VM)
+JUDGE_PROVIDER='openai'          # openai | anthropic | gemini
+JUDGE_MODEL=''                   # empty = default model of the provider
+JUDGE_API_KEY=''

@@ -118,6 +118,7 @@
     flex: 1; margin: 0; overflow: auto; padding: 12px 14px; border-radius: 8px; border: 1px solid var(--line);
     background: var(--panel); font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: .82rem; line-height: 1.5; tab-size: 4;
   }
+  .chat[hidden] { display: none; }   /* .chat sets display:flex, which would override [hidden] */
   .chat { display: flex; flex-direction: column; min-height: 0; min-width: 0; }
   .notice {
     margin: 14px 20px 0; padding: 10px 14px; border-radius: 6px;

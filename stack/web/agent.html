@@ -24,6 +24,11 @@
   .tool .tr.open { max-height: none; }
   .tool .wait { opacity: .75; }
   .agent .err { color: var(--err); font-family: var(--ui); font-size: .95rem; }
+  .sub { margin: 8px 0 4px; padding-left: 12px; border-left: 2px solid var(--note-line); }
+  .sub-h { margin: 0 0 4px; font-size: .74rem; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; color: var(--note-ink); }
+  .sub .step .stext { font-family: var(--ui); font-size: .9rem; line-height: 1.5; }
+  .sub .tool { background: var(--panel); color: var(--ink); border-color: var(--line); }
+  .agent .warn { color: var(--warn); font-family: var(--ui); font-size: .88rem; margin: 6px 0; }
 </style>
 </head>
 <body>
@@ -37,6 +42,7 @@
   <div class="status" aria-live="polite">
     <span class="chip" id="st-model"><i class="dot"></i><span></span></span>
     <span class="chip off" id="st-tools"><i class="dot"></i><span></span></span>
+    <span class="chip off" id="st-dtctl"><i class="dot"></i><span></span></span>
     <span class="chip off" id="st-otel"><i class="dot"></i><span></span></span>
   </div>
   <div class="lang" id="lang" role="group" aria-label="Language"></div>
@@ -85,6 +91,8 @@
       <ul id="tools-list"></ul>
       <h3 class="mcp-h" id="mcp-head"></h3>
       <ul id="mcp-status"></ul>
+      <h3 class="mcp-h" id="dt-head"></h3>
+      <ul id="dt-status"></ul>
     </section>
 
     <section id="panel-obs" role="tabpanel" aria-labelledby="tab-obs" hidden>
@@ -126,11 +134,11 @@
 </div>
 
 <style>
-  #tools-list, #mcp-status { list-style: none; margin: 0; padding: 0; }
+  #tools-list, #mcp-status, #dt-status { list-style: none; margin: 0; padding: 0; }
   .mcp-h { font-size: .8rem; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); margin: 18px 0 6px; }
-  #mcp-status li { padding: 5px 0; font-size: .85rem; overflow-wrap: anywhere; }
-  #mcp-status li.ko { color: var(--err); }
-  #mcp-status li.ok::before { content: "● "; color: var(--ok); }
+  #mcp-status li, #dt-status li { padding: 5px 0; font-size: .85rem; overflow-wrap: anywhere; }
+  #mcp-status li.ko, #dt-status li.ko { color: var(--err); }
+  #mcp-status li.ok::before, #dt-status li.ok::before { content: "● "; color: var(--ok); }
   #tools-list .src { font-size: .72rem; color: var(--note-ink); background: var(--note); border: 1px solid var(--note-line); border-radius: 4px; padding: 0 5px; margin-left: 6px; font-family: var(--ui); font-weight: 600; }
   #tools-list li { padding: 8px 0; border-bottom: 1px solid var(--line); font-size: .86rem; }
   #tools-list .n { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-weight: 700; display: block; }
@@ -144,7 +152,7 @@ const API = "/agent";   // nginx: /agent/api/* -> agent-api /api/*
 const I18N = {
   fr: {
     title: "Atelier IA", pageTitle: "Atelier IA - Agent", navChat: "Chat", navAgent: "Agent", tabsAria: "Panneau latéral",
-    tabSettings: "Paramètres", tabTools: "Outils", tabObs: "Observability", mcpNone: "Aucun fichier mcp.json : créez-le dans VS Code web (dossier {file}) pour ajouter des outils MCP.", mcpOk: "{name} : {n} outil(s) MCP", mcpKo: "{name} : {error}", mcpHead: "Serveurs MCP",
+    tabSettings: "Paramètres", tabTools: "Outils", tabObs: "Observability", stDtctlOk: "dtctl : prêt", stDtctlNoCfg: "dtctl : non configuré", stDtctlMissing: "dtctl : non installé", stDtctlWait: "dtctl : en attente", dtHead: "Dynatrace (sous-agent)", dtctlMissing: "dtctl : non installé dans cette image", dtctlNoConfig: "dtctl : non configuré ({file} introuvable)", dtctlOk: "dtctl : prêt (lecture seule)", skillsNone: "Skills : aucune ({dir})", skillsOk: "Skills : {n} ({names})", subAgent: "Sous-agent Dynatrace", warnLength: "Réponse coupée : la limite de contexte du modèle ({ctx} jetons) a été atteinte. Réduisez le nombre d'outils MCP dans mcp.json ou augmentez AGENT_NUM_CTX.", warnContext: "Contexte presque plein ({tokens} / {ctx} jetons) : le modèle risque de perdre le début du prompt ou de couper sa réponse. Réduisez les outils MCP dans mcp.json ou augmentez AGENT_NUM_CTX.", mcpNone: "Aucun fichier mcp.json : créez-le dans VS Code web (dossier {file}) pour ajouter des outils MCP.", mcpOk: "{name} : {n} outil(s) MCP", mcpKo: "{name} : {error}", mcpHead: "Serveurs MCP",
     temp: "Température", tempHint: "Basse : décisions stables et prévisibles. Haute : plus de variété.",
     topkHint: "Nombre de jetons candidats examinés à chaque étape. Bas : plus prudent.",
     toppHint: "Ne garde que les candidats dont la probabilité cumulée atteint cette valeur.",
@@ -172,7 +180,7 @@ const I18N = {
   },
   en: {
     title: "AI Workshop", pageTitle: "AI Workshop - Agent", navChat: "Chat", navAgent: "Agent", tabsAria: "Side panel",
-    tabSettings: "Settings", tabTools: "Tools", tabObs: "Observability", mcpNone: "No mcp.json file: create it in VS Code web (folder {file}) to add MCP tools.", mcpOk: "{name}: {n} MCP tool(s)", mcpKo: "{name}: {error}", mcpHead: "MCP servers",
+    tabSettings: "Settings", tabTools: "Tools", tabObs: "Observability", stDtctlOk: "dtctl: ready", stDtctlNoCfg: "dtctl: not configured", stDtctlMissing: "dtctl: not installed", stDtctlWait: "dtctl: waiting", dtHead: "Dynatrace (sub-agent)", dtctlMissing: "dtctl: not installed in this image", dtctlNoConfig: "dtctl: not configured ({file} not found)", dtctlOk: "dtctl: ready (read-only)", skillsNone: "Skills: none ({dir})", skillsOk: "Skills: {n} ({names})", subAgent: "Dynatrace sub-agent", warnLength: "Answer cut: the model context limit ({ctx} tokens) was reached. Reduce the MCP tools in mcp.json or raise AGENT_NUM_CTX.", warnContext: "Context almost full ({tokens} / {ctx} tokens): the model may lose the start of the prompt or cut its answer. Reduce the MCP tools in mcp.json or raise AGENT_NUM_CTX.", mcpNone: "No mcp.json file: create it in VS Code web (folder {file}) to add MCP tools.", mcpOk: "{name}: {n} MCP tool(s)", mcpKo: "{name}: {error}", mcpHead: "MCP servers",
     temp: "Temperature", tempHint: "Low: stable, predictable decisions. High: more variety.",
     topkHint: "Number of candidate tokens considered at each step. Low: more cautious.",
     toppHint: "Keeps only the candidates whose cumulative probability reaches this value.",
@@ -200,7 +208,7 @@ const I18N = {
   },
   es: {
     title: "Taller de IA", pageTitle: "Taller de IA - Agente", navChat: "Chat", navAgent: "Agente", tabsAria: "Panel lateral",
-    tabSettings: "Ajustes", tabTools: "Herramientas", tabObs: "Observability", mcpNone: "Ningún archivo mcp.json: créelo en VS Code web (carpeta {file}) para añadir herramientas MCP.", mcpOk: "{name}: {n} herramienta(s) MCP", mcpKo: "{name}: {error}", mcpHead: "Servidores MCP",
+    tabSettings: "Ajustes", tabTools: "Herramientas", tabObs: "Observability", stDtctlOk: "dtctl: listo", stDtctlNoCfg: "dtctl: sin configurar", stDtctlMissing: "dtctl: no instalado", stDtctlWait: "dtctl: en espera", dtHead: "Dynatrace (subagente)", dtctlMissing: "dtctl: no instalado en esta imagen", dtctlNoConfig: "dtctl: sin configurar ({file} no encontrado)", dtctlOk: "dtctl: listo (solo lectura)", skillsNone: "Skills: ninguna ({dir})", skillsOk: "Skills: {n} ({names})", subAgent: "Subagente Dynatrace", warnLength: "Respuesta cortada: se alcanzó el límite de contexto del modelo ({ctx} tokens). Reduzca las herramientas MCP en mcp.json o aumente AGENT_NUM_CTX.", warnContext: "Contexto casi lleno ({tokens} / {ctx} tokens): el modelo puede perder el principio del prompt o cortar su respuesta. Reduzca las herramientas MCP en mcp.json o aumente AGENT_NUM_CTX.", mcpNone: "Ningún archivo mcp.json: créelo en VS Code web (carpeta {file}) para añadir herramientas MCP.", mcpOk: "{name}: {n} herramienta(s) MCP", mcpKo: "{name}: {error}", mcpHead: "Servidores MCP",
     temp: "Temperatura", tempHint: "Baja: decisiones estables y predecibles. Alta: más variedad.",
     topkHint: "Número de tokens candidatos examinados en cada paso. Bajo: más prudente.",
     toppHint: "Conserva solo los candidatos cuya probabilidad acumulada alcanza este valor.",
@@ -228,7 +236,7 @@ const I18N = {
   },
   de: {
     title: "KI-Workshop", pageTitle: "KI-Workshop - Agent", navChat: "Chat", navAgent: "Agent", tabsAria: "Seitenleiste",
-    tabSettings: "Einstellungen", tabTools: "Werkzeuge", tabObs: "Observability", mcpNone: "Keine mcp.json-Datei: Legen Sie sie in VS Code web an (Ordner {file}), um MCP-Werkzeuge hinzuzufügen.", mcpOk: "{name}: {n} MCP-Werkzeug(e)", mcpKo: "{name}: {error}", mcpHead: "MCP-Server",
+    tabSettings: "Einstellungen", tabTools: "Werkzeuge", tabObs: "Observability", stDtctlOk: "dtctl: bereit", stDtctlNoCfg: "dtctl: nicht konfiguriert", stDtctlMissing: "dtctl: nicht installiert", stDtctlWait: "dtctl: wartet", dtHead: "Dynatrace (Sub-Agent)", dtctlMissing: "dtctl: in diesem Image nicht installiert", dtctlNoConfig: "dtctl: nicht konfiguriert ({file} nicht gefunden)", dtctlOk: "dtctl: bereit (nur Lesezugriff)", skillsNone: "Skills: keine ({dir})", skillsOk: "Skills: {n} ({names})", subAgent: "Dynatrace-Sub-Agent", warnLength: "Antwort abgeschnitten: Das Kontextlimit des Modells ({ctx} Tokens) wurde erreicht. Reduzieren Sie die MCP-Werkzeuge in mcp.json oder erhöhen Sie AGENT_NUM_CTX.", warnContext: "Kontext fast voll ({tokens} / {ctx} Tokens): Das Modell kann den Anfang des Prompts verlieren oder seine Antwort abschneiden. Reduzieren Sie die MCP-Werkzeuge in mcp.json oder erhöhen Sie AGENT_NUM_CTX.", mcpNone: "Keine mcp.json-Datei: Legen Sie sie in VS Code web an (Ordner {file}), um MCP-Werkzeuge hinzuzufügen.", mcpOk: "{name}: {n} MCP-Werkzeug(e)", mcpKo: "{name}: {error}", mcpHead: "MCP-Server",
     temp: "Temperatur", tempHint: "Niedrig: stabile, vorhersehbare Entscheidungen. Hoch: mehr Abwechslung.",
     topkHint: "Anzahl der in jedem Schritt geprüften Kandidaten-Tokens. Niedrig: vorsichtiger.",
     toppHint: "Behält nur die Kandidaten, deren kumulierte Wahrscheinlichkeit diesen Wert erreicht.",
@@ -256,7 +264,7 @@ const I18N = {
   },
   it: {
     title: "Laboratorio IA", pageTitle: "Laboratorio IA - Agente", navChat: "Chat", navAgent: "Agente", tabsAria: "Pannello laterale",
-    tabSettings: "Impostazioni", tabTools: "Strumenti", tabObs: "Observability", mcpNone: "Nessun file mcp.json: crealo in VS Code web (cartella {file}) per aggiungere strumenti MCP.", mcpOk: "{name}: {n} strumento/i MCP", mcpKo: "{name}: {error}", mcpHead: "Server MCP",
+    tabSettings: "Impostazioni", tabTools: "Strumenti", tabObs: "Observability", stDtctlOk: "dtctl: pronto", stDtctlNoCfg: "dtctl: non configurato", stDtctlMissing: "dtctl: non installato", stDtctlWait: "dtctl: in attesa", dtHead: "Dynatrace (sotto-agente)", dtctlMissing: "dtctl: non installato in questa immagine", dtctlNoConfig: "dtctl: non configurato ({file} non trovato)", dtctlOk: "dtctl: pronto (sola lettura)", skillsNone: "Skills: nessuna ({dir})", skillsOk: "Skills: {n} ({names})", subAgent: "Sotto-agente Dynatrace", warnLength: "Risposta troncata: è stato raggiunto il limite di contesto del modello ({ctx} token). Riduci gli strumenti MCP in mcp.json o aumenta AGENT_NUM_CTX.", warnContext: "Contesto quasi pieno ({tokens} / {ctx} token): il modello può perdere l'inizio del prompt o troncare la risposta. Riduci gli strumenti MCP in mcp.json o aumenta AGENT_NUM_CTX.", mcpNone: "Nessun file mcp.json: crealo in VS Code web (cartella {file}) per aggiungere strumenti MCP.", mcpOk: "{name}: {n} strumento/i MCP", mcpKo: "{name}: {error}", mcpHead: "Server MCP",
     temp: "Temperatura", tempHint: "Bassa: decisioni stabili e prevedibili. Alta: più varietà.",
     topkHint: "Numero di token candidati esaminati a ogni passo. Basso: più prudente.",
     toppHint: "Mantiene solo i candidati la cui probabilità cumulativa raggiunge questo valore.",
@@ -297,16 +305,34 @@ function renderStatus() {
   if (!h) {
     setChip("st-model", linkDown ? "err" : "", t(linkDown ? "unreachable" : "stModelWait"));
     setChip("st-tools", "off", t("stToolsWait")); setChip("st-otel", "off", t("stOtelWait"));
+    setChip("st-dtctl", "off", t("stDtctlWait"));
     showNotice(linkDown ? t("noticeDown") : ""); $("obs-service").textContent = ""; return;
   }
   setChip("st-model", h.models_ready ? "ok" : "", t(h.models_ready ? "stModelOk" : "stModelPull", { model: h.model }));
   setChip("st-tools", "ok", t("stTools", { n: h.tools.length }));
+  const dt = h.dtctl || {};
+  if (!dt.installed) setChip("st-dtctl", "err", t("stDtctlMissing"));
+  else if (!dt.configured) setChip("st-dtctl", "", t("stDtctlNoCfg"));
+  else setChip("st-dtctl", "ok", t("stDtctlOk"));
+  $("st-dtctl").title = dt.config || "";
   setChip("st-otel", h.openllmetry ? "ok" : "off", t(h.openllmetry ? "stOtelOn" : "stOtelOff") + (h.openllmetry ? " (" + h.service + ")" : ""));
   $("obs-service").textContent = t("obsService", { service: h.service });
   showNotice(h.models_ready ? "" : t("noticePull", { model: h.model }));
   renderMcp();
 }
+function renderDt() {
+  const ul = $("dt-status"); $("dt-head").textContent = t("dtHead"); ul.innerHTML = "";
+  const add = (cls, text) => { const li = document.createElement("li"); li.className = cls; li.textContent = text; ul.append(li); };
+  const d = health && health.dtctl, k = health && health.skills;
+  if (d) {
+    if (!d.installed) add("ko", t("dtctlMissing"));
+    else if (!d.configured) add("", t("dtctlNoConfig", { file: d.config }));
+    else add("ok", t("dtctlOk"));
+  }
+  if (k) add(k.count ? "ok" : "", k.count ? t("skillsOk", { n: k.count, names: k.names.join(", ") }) : t("skillsNone", { dir: k.dir }));
+}
 function renderMcp() {
+  renderDt();
   const m = health && health.mcp, ul = $("mcp-status");
   $("mcp-head").textContent = t("mcpHead");
   ul.innerHTML = "";
@@ -340,14 +366,22 @@ async function loadSettings() {
   let stored = {};
   try { stored = JSON.parse(localStorage.getItem("ailab.agent.settings") || "{}"); } catch {}
   settings = { ...defaults, ...stored };
-  if (!settings.system_prompt) settings.system_prompt = defaults.system_prompt;
+  if (isDefaultPrompt(settings.system_prompt)) settings.system_prompt = defaultPrompt();
   settingsLoaded = true; paintSettings();
 }
 for (const [key, inputId, outId, digits] of FIELDS) {
   $(inputId).addEventListener("input", (e) => { settings[key] = Number(e.target.value); $(outId).textContent = i18n.num(settings[key], digits); saveSettings(); });
 }
 $("s-system").addEventListener("input", (e) => { settings.system_prompt = e.target.value; saveSettings(); });
-$("s-reset").onclick = () => { settings = { ...defaults }; paintSettings(); saveSettings(); };
+
+/* default system message / agent instruction: follows the selected language until the participant edits it */
+const allDefaultPrompts = () => [defaults.system_prompt, ...Object.values(defaults.system_prompts || {})];
+const defaultPrompt = () => (defaults.system_prompts || {})[i18n.lang] || defaults.system_prompt;
+const isDefaultPrompt = (text) => !String(text || "").trim() || allDefaultPrompts().includes(text);
+function syncPrompt() {
+  if (settingsLoaded && isDefaultPrompt(settings.system_prompt)) { settings.system_prompt = defaultPrompt(); saveSettings(); }
+}
+$("s-reset").onclick = () => { settings = { ...defaults, system_prompt: defaultPrompt() }; paintSettings(); saveSettings(); };
 
 /* ---------- tools list ---------- */
 let toolsSig = "";
@@ -358,7 +392,7 @@ async function loadTools() {
     const li = document.createElement("li");
     li.innerHTML = '<span class="n"></span><span class="d"></span>';
     li.querySelector(".n").textContent = tl.name; li.querySelector(".d").textContent = tl.description;
-    if (tl.source && tl.source !== "local") { const b = document.createElement("span"); b.className = "src"; b.textContent = "MCP · " + tl.source; li.querySelector(".n").append(b); }
+    if (tl.source && tl.source !== "local") { const b = document.createElement("span"); b.className = "src"; b.textContent = tl.badge || (tl.source === "subagent" ? "sub-agent" : "MCP · " + tl.source); li.querySelector(".n").append(b); }
     ul.append(li);
   }
 }
@@ -389,15 +423,23 @@ tabs.forEach(([tab], i) => {
   });
 });
 
+
+/* conversation kept while moving between the Chat and Agent pages (sessionStorage) */
+const TURNS_KEY = "ailab.agent.turns";
+let turns = [];
+try { turns = JSON.parse(sessionStorage.getItem(TURNS_KEY) || "[]").filter((x) => x.events); } catch {}
+function saveTurns() { try { sessionStorage.setItem(TURNS_KEY, JSON.stringify(turns.slice(-20))); } catch {} }
+history = turns.flatMap((x) => [{ role: "user", content: x.task }, { role: "assistant", content: x.answer }]);
+
 /* ---------- agent run ---------- */
 const scrollDown = () => { logEl.scrollTop = logEl.scrollHeight; };
 function addUser(text) { const d = document.createElement("div"); d.className = "msg user"; d.textContent = text; messages.append(d); scrollDown(); }
-function newStep(run, n) {
+function newStep(parent, n) {
   const d = document.createElement("section"); d.className = "step";
   d.innerHTML = '<p class="step-h"></p><div class="stext"></div>';
   d.querySelector(".step-h").textContent = t("stepLabel", { n });
   d.dataset.n = n; d.text = "";
-  run.querySelector(".steps").append(d); return d;
+  parent.append(d); return d;
 }
 function newToolCard(step, name, args) {
   const c = document.createElement("div"); c.className = "tool";
@@ -407,19 +449,88 @@ function newToolCard(step, name, args) {
   const r = c.querySelector(".tr"); r.textContent = t("noResult"); r.title = t("expand"); r.onclick = () => r.classList.toggle("open");
   step.append(c); return c;
 }
+/* the result paragraph of a card (a direct child: the card of ask_dynatrace also contains the sub-agent's cards) */
+const cardResult = (card) => Array.from(card.children).find((el) => el.classList.contains("tr"));
+function makeRun() {
+  const run = document.createElement("article"); run.className = "agent";
+  run.innerHTML = '<div class="steps"></div>' + '<p class="thinking"></p><p class="meta"></p>';
+  return run;
+}
+
+/* One state per run. Events come from the API ("agent" is "main" or "dynatrace"); the same handler replays the
+   saved events when the page is restored. The sub-agent activity is drawn inside the ask_dynatrace card. */
+function newRunState(run) {
+  return { run, steps: run.querySelector(".steps"), main: { step: null, card: null },
+    sub: { step: null, card: null, box: null }, final: null };
+}
+function handleEvent(st, ev, j) {
+  const isSub = j.agent === "dynatrace", who = isSub ? st.sub : st.main;
+  if (ev === "step") {
+    if (isSub) {
+      if (!st.sub.box && st.main.card) {
+        const box = document.createElement("div"); box.className = "sub";
+        box.innerHTML = '<p class="sub-h"></p>'; box.querySelector(".sub-h").textContent = t("subAgent");
+        st.main.card.insertBefore(box, cardResult(st.main.card)); st.sub.box = box;
+      }
+      who.step = newStep(st.sub.box || st.steps, j.n);
+    } else {
+      who.step = newStep(st.steps, j.n); st.sub = { step: null, card: null, box: null };
+    }
+  }
+  else if (ev === "token" && who.step) { who.step.text += j.text; who.step.querySelector(".stext").innerHTML = md(who.step.text); }
+  else if (ev === "tool_call" && who.step) { who.step.classList.add("thought"); who.card = newToolCard(who.step, j.name, j.args); }
+  else if (ev === "tool_result" && who.card) { const r = cardResult(who.card); r.classList.remove("wait"); r.textContent = j.result; }
+  else if (ev === "warning") {
+    const p = document.createElement("p"); p.className = "warn";
+    p.textContent = j.code === "length" ? t("warnLength", { ctx: j.ctx }) : t("warnContext", { tokens: j.tokens, ctx: j.ctx });
+    st.steps.append(p);
+  }
+  else if (ev === "error") { const p = document.createElement("p"); p.className = "err"; p.textContent = j.text; st.steps.append(p); }
+  else if (ev === "done") st.final = j;
+}
+/* the last main step without tool call is the answer */
+function finalizeRun(st) {
+  const steps = Array.from(st.steps.children).filter((el) => el.classList.contains("step"));
+  const last = steps[steps.length - 1];
+  if (last && !last.querySelector(".tool")) { last.classList.add("final"); return last.text; }
+  return "";
+}
+const metaText = (m) => t("metaDone", { steps: m.steps, n: m.tokens, total: m.total_s,
+  t: i18n.num(m.temperature, 2), k: m.top_k, p: i18n.num(m.top_p, 2) });
+
+function renderTurn(turn) {
+  addUser(turn.task);
+  const run = makeRun();
+  run.querySelector(".thinking").remove();
+  const st = newRunState(run);
+  for (const [ev, j] of turn.events) handleEvent(st, ev, j);
+  finalizeRun(st);
+  if (turn.meta) run.querySelector(".meta").textContent = metaText(turn.meta);
+  messages.append(run);
+}
+function restoreTurns() {
+  if (!turns.length) return;
+  const empty = $("empty"); if (empty) empty.remove();
+  turns.forEach(renderTurn);
+}
 
 async function ask(task) {
   if (busy || !task.trim()) return;
   busy = true; updateSend();
   const empty = $("empty"); if (empty) empty.remove();
   addUser(task);
-  const run = document.createElement("article"); run.className = "agent";
-  run.innerHTML = '<div class="steps"></div><p class="thinking"></p><p class="meta"></p>';
+  const run = makeRun(), st = newRunState(run), saved = [];
   run.querySelector(".thinking").textContent = t("running");
   messages.append(run); scrollDown();
   const thinking = run.querySelector(".thinking"), meta = run.querySelector(".meta");
   const used = { ...settings };
-  let step = null, finalText = "", errored = false, final = null, lastCard = null;
+  let finalText = "", errored = false;
+  // events are kept (consecutive tokens merged) so the run can be replayed when the page is reopened
+  const record = (ev, j) => {
+    const last = saved[saved.length - 1];
+    if (ev === "token" && last && last[0] === "token" && last[1].agent === j.agent) last[1].text += j.text;
+    else saved.push([ev, { ...j }]);
+  };
 
   try {
     const res = await fetch(API + "/api/chat", {
@@ -441,30 +552,25 @@ async function ask(task) {
         for (const line of raw.split("\n")) { if (line.startsWith("event:")) ev = line.slice(6).trim(); else if (line.startsWith("data:")) data += line.slice(5).trim(); }
         if (!data) continue;
         const j = JSON.parse(data);
-        if (ev === "step") { step = newStep(run, j.n); }
-        else if (ev === "token" && step) { step.text += j.text; step.querySelector(".stext").innerHTML = md(step.text); }
-        else if (ev === "tool_call" && step) { step.classList.add("thought"); lastCard = newToolCard(step, j.name, j.args); }
-        else if (ev === "tool_result" && lastCard) {
-          const r = lastCard.querySelector(".tr"); r.classList.remove("wait"); r.textContent = j.result;
-        }
-        else if (ev === "done") final = j;
-        else if (ev === "error") { errored = true; const p = document.createElement("p"); p.className = "err"; p.textContent = j.text; run.querySelector(".steps").append(p); }
-        scrollDown();
+        if (ev === "error") errored = true;
+        record(ev, j); handleEvent(st, ev, j); scrollDown();
       }
     }
-    // the last step without tool call is the answer
-    const steps = run.querySelectorAll(".step");
-    const last = steps[steps.length - 1];
-    if (last && !last.querySelector(".tool")) { last.classList.add("final"); finalText = last.text; }
-    if (final) meta.textContent = t("metaDone", { steps: final.steps, n: final.tokens, total: final.total_s,
-      t: i18n.num(used.temperature, 2), k: used.top_k, p: i18n.num(used.top_p, 2) });
-    if (!finalText && !errored) { const p = document.createElement("p"); p.textContent = t("nothing"); run.querySelector(".steps").append(p); }
+    finalText = finalizeRun(st);
+    if (st.final) meta.textContent = metaText({ ...st.final, temperature: used.temperature, top_k: used.top_k, top_p: used.top_p });
+    if (!finalText && !errored) { const p = document.createElement("p"); p.textContent = t("nothing"); st.steps.append(p); }
   } catch (err) {
     errored = true;
-    const p = document.createElement("p"); p.className = "err"; p.textContent = err.message; run.querySelector(".steps").append(p);
+    const p = document.createElement("p"); p.className = "err"; p.textContent = err.message; st.steps.append(p);
   }
   thinking.remove();
-  if (!errored && finalText) history.push({ role: "user", content: task }, { role: "assistant", content: finalText });
+  if (!errored && finalText) {
+    history.push({ role: "user", content: task }, { role: "assistant", content: finalText });
+    turns.push({ task, answer: finalText, events: saved,
+      meta: st.final && { steps: st.final.steps, tokens: st.final.tokens, total_s: st.final.total_s,
+        temperature: used.temperature, top_k: used.top_k, top_p: used.top_p } });
+    saveTurns();
+  }
   busy = false; updateSend(); qEl.focus();
 }
 
@@ -473,7 +579,8 @@ qEl.addEventListener("keydown", (e) => { if (e.key === "Enter" && !e.shiftKey &&
 document.querySelectorAll(".starters button").forEach((b) => b.addEventListener("click", () => ask(b.textContent)));
 
 /* ---------- language ---------- */
-i18n.switcher("lang", () => { renderStatus(); renderMcp(); paintSettings(); document.querySelectorAll(".thinking").forEach((el) => { el.textContent = t("running"); }); });
+i18n.switcher("lang", () => { renderStatus(); renderMcp(); syncPrompt(); paintSettings(); document.querySelectorAll(".thinking").forEach((el) => { el.textContent = t("running"); }); });
+restoreTurns();
 i18n.apply(); renderStatus(); paintSettings();
 refreshHealth();
 setInterval(refreshHealth, 5000);

@@ -28,6 +28,21 @@ models:
       - embed
 YAML
 
+# dt-evals (terminal): platform URL derived from the OTLP tenant (<id>.live.dynatrace.com -> https://<id>.apps.dynatrace.com),
+# and the shared judge key exposed under the variable name of the chosen provider.
+case "${DT_TENANT:-}" in
+  *.live.dynatrace.com) if [ -z "${DT_ENV_URL:-}" ]; then export DT_ENV_URL="https://${DT_TENANT%%.*}.apps.dynatrace.com"; fi ;;
+esac
+if [ -z "${JUDGE_MODEL:-}" ]; then unset JUDGE_MODEL; fi
+if [ -n "${JUDGE_API_KEY:-}" ]; then
+  case "${JUDGE_PROVIDER:-openai}" in
+    anthropic) export ANTHROPIC_API_KEY="$JUDGE_API_KEY" ;;
+    gemini) export GOOGLE_API_KEY="$JUDGE_API_KEY" ;;
+    *) export OPENAI_API_KEY="$JUDGE_API_KEY" ;;
+  esac
+fi
+unset JUDGE_API_KEY
+
 SETTINGS=/root/.local/share/code-server/User/settings.json
 [ -f "$SETTINGS" ] || cat > "$SETTINGS" <<JSON
 {

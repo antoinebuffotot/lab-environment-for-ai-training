@@ -20,8 +20,9 @@ from fastapi import FastAPI, HTTPException  # noqa: E402
 from fastapi.responses import StreamingResponse  # noqa: E402
 from pydantic import BaseModel, Field  # noqa: E402
 
-from app import mcp_tools, rag  # noqa: E402
-from app.agent import AGENT_SYSTEM_PROMPT, DEFAULT_AGENT_PARAMS, TOOLS, agent_turn  # noqa: E402
+from app import dtctl_tool, mcp_tools, rag, skills  # noqa: E402
+from app.agent import (AGENT_SYSTEM_PROMPT, AGENT_SYSTEM_PROMPTS, ASK_DYNATRACE, DEFAULT_AGENT_PARAMS, NUM_CTX,
+                       TOOLS, agent_turn, dynatrace_tool_schemas, subagent_active)  # noqa: E402
 
 log = logging.getLogger("agent-api")
 D = DEFAULT_AGENT_PARAMS
@@ -59,22 +60,33 @@ async def health():
         "chunks": chunks,
         "openllmetry": is_enabled(),
         "service": service_name(),
-        "tools": [t["function"]["name"] for t in TOOLS] + mcp.get("tools", []),
+        "tools": [t["function"]["name"] for t in TOOLS] + (["ask_dynatrace"] if subagent_active() else [])
+                 + [t["function"]["name"] for t in dynatrace_tool_schemas()],
+        "dtctl": dtctl_tool.status(),
+        "skills": skills.status(),
+        "subagent": subagent_active(),
         "mcp": mcp,
+        "num_ctx": NUM_CTX,
         "host": os.getenv("VM_FQDN", "localhost"),
     }
 
 
 @app.get("/api/settings")
 async def settings():
-    return {**D, "system_prompt": AGENT_SYSTEM_PROMPT}
+    return {**D, "system_prompt": AGENT_SYSTEM_PROMPT, "system_prompts": AGENT_SYSTEM_PROMPTS}
 
 
 @app.get("/api/tools")
 async def tools():
     mcp_tools.refresh_soon()
     local = [{"name": t["function"]["name"], "description": t["function"]["description"], "source": "local"} for t in TOOLS]
-    return local + mcp_tools.describe()
+    sub = ([{"name": "ask_dynatrace", "description": ASK_DYNATRACE["function"]["description"], "source": "subagent"}]
+           if subagent_active() else [])
+    others = [{"name": t["function"]["name"], "description": t["function"]["description"], "source": src, "badge": src}
+              for src, group in (("dtctl", [dtctl_tool.SCHEMA] if dtctl_tool.available() else []),
+                                 ("skills", skills.schemas() if dynatrace_tool_schemas() else []))
+              for t in group]
+    return local + sub + mcp_tools.describe() + others
 
 
 @app.get("/api/observability/code")

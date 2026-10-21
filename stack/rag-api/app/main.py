@@ -10,7 +10,7 @@ from pathlib import Path
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 
 # OpenLLMetry must be initialised BEFORE ollama / chromadb are imported (see rag.py)
-from app.telemetry import init_telemetry, is_enabled, task, workflow  # noqa: E402
+from app.telemetry import init_telemetry, is_enabled, service_name, task, workflow  # noqa: E402
 
 init_telemetry()
 
@@ -99,6 +99,7 @@ async def health():
         "model": rag.LLM_MODEL,
         "embed_model": rag.EMBED_MODEL,
         "openllmetry": is_enabled(),
+        "service": service_name(),
         "host": os.getenv("VM_FQDN", "localhost"),
     }
 
@@ -106,7 +107,7 @@ async def health():
 @app.get("/api/settings")
 async def settings():
     """Default chat settings, used by the web UI to fill and reset the settings panel."""
-    return {**D, "system_prompt": rag.SYSTEM_PROMPT}
+    return {**D, "system_prompt": rag.SYSTEM_PROMPT, "system_prompts": rag.SYSTEM_PROMPTS}
 
 
 @task("rag.retrieve")

@@ -10,7 +10,7 @@ import chromadb
 import ollama
 from chromadb.config import Settings
 
-from app.telemetry import HISTORY_PREFIX
+from app.telemetry import HISTORY_PREFIX, RAG_PREFIX
 
 log = logging.getLogger("rag")
 
@@ -22,14 +22,50 @@ EMBED_MODEL = os.getenv("EMBED_MODEL", "nomic-embed-text")
 COLLECTION = os.getenv("COLLECTION", "training_docs")
 ALLOWED_EXT = {".md", ".txt", ".pdf"}
 
-SYSTEM_PROMPT = (
-    "Tu es l'assistant d'un atelier de formation sur l'IA générative et l'observabilité. "
-    "Réponds dans la langue de la question, de façon claire et concise. "
-    "Quand des passages de documents sont fournis, appuie-toi dessus et cite leur numéro "
-    "entre crochets, par exemple [1]. "
-    "Si les passages ne contiennent pas la réponse, dis-le, puis réponds avec tes "
-    "connaissances générales en précisant que cela ne vient pas des documents."
-)
+# Default system message in each language of the web UI (the UI picks the one of the selected language).
+SYSTEM_PROMPTS = {
+    "fr": (
+        "Tu es l'assistant d'un atelier de formation sur l'IA générative et l'observabilité. "
+        "Réponds dans la langue de la question, de façon claire et concise. "
+        "Quand des passages de documents sont fournis, appuie-toi dessus et cite leur numéro "
+        "entre crochets, par exemple [1]. "
+        "Si les passages ne contiennent pas la réponse, dis-le, puis réponds avec tes "
+        "connaissances générales en précisant que cela ne vient pas des documents."
+    ),
+    "en": (
+        "You are the assistant of a training workshop on generative AI and observability. "
+        "Answer in the language of the question, clearly and concisely. "
+        "When document passages are provided, rely on them and cite their number "
+        "in square brackets, for example [1]. "
+        "If the passages do not contain the answer, say so, then answer from your "
+        "general knowledge, making clear that it does not come from the documents."
+    ),
+    "es": (
+        "Eres el asistente de un taller de formación sobre IA generativa y observabilidad. "
+        "Responde en el idioma de la pregunta, de forma clara y concisa. "
+        "Cuando se proporcionen fragmentos de documentos, apóyate en ellos y cita su número "
+        "entre corchetes, por ejemplo [1]. "
+        "Si los fragmentos no contienen la respuesta, dilo y luego responde con tus "
+        "conocimientos generales, aclarando que no proceden de los documentos."
+    ),
+    "de": (
+        "Du bist der Assistent eines Schulungsworkshops zu generativer KI und Observability. "
+        "Antworte in der Sprache der Frage, klar und knapp. "
+        "Wenn Dokumentpassagen bereitgestellt werden, stütze dich darauf und nenne ihre Nummer "
+        "in eckigen Klammern, zum Beispiel [1]. "
+        "Wenn die Passagen die Antwort nicht enthalten, sage das und antworte dann mit deinem "
+        "Allgemeinwissen, mit dem Hinweis, dass dies nicht aus den Dokumenten stammt."
+    ),
+    "it": (
+        "Sei l'assistente di un laboratorio di formazione sull'IA generativa e sull'observability. "
+        "Rispondi nella lingua della domanda, in modo chiaro e conciso. "
+        "Quando vengono forniti passaggi di documenti, basati su di essi e cita il loro numero "
+        "tra parentesi quadre, ad esempio [1]. "
+        "Se i passaggi non contengono la risposta, dillo, poi rispondi con le tue "
+        "conoscenze generali precisando che non provengono dai documenti."
+    ),
+}
+SYSTEM_PROMPT = SYSTEM_PROMPTS["fr"]
 
 # default chat settings (editable from the web UI, sent with every chat request)
 DEFAULT_PARAMS = {"temperature": 0.3, "top_k": 40, "top_p": 0.9, "passages": 3}
@@ -209,9 +245,9 @@ def build_messages(question: str, history: list[dict], sources: list[dict],
 
     1. the user question, alone (the first input shown by Dynatrace AI Observability),
     2. the system instruction,
-    3. a user message with the RAG passages (if any),
-    4. a user message with the previous turns (if any), starting with HISTORY_PREFIX: it is sent to
-       the model but removed from the exported trace (see telemetry._strip_history).
+    3. a user message with the RAG passages (if any), starting with RAG_PREFIX,
+    4. a user message with the previous turns (if any), starting with HISTORY_PREFIX.
+    Messages 3 and 4 are sent to the model but removed from the exported trace (telemetry._strip_history).
     Ollama gathers every system message into the system prompt whatever its position.
     """
     messages = [
@@ -221,7 +257,7 @@ def build_messages(question: str, history: list[dict], sources: list[dict],
     if sources:
         context = "\n\n".join(f"[{s['n']}] (source : {s['source']})\n{s['text']}" for s in sources)
         messages.append({"role": "user", "content": (
-            f"Passages de documents :\n\n{context}\n\n"
+            f"{RAG_PREFIX}\n\n{context}\n\n"
             "Réponds à la question de l'utilisateur ci-dessus en t'appuyant sur ces passages.")})
     previous = []
     for item in history[-6:]:
