@@ -1,5 +1,7 @@
 # OpenLLMetry et observabilité des applications LLM
 
+[English version](01-openllmetry-and-llm-observability.md)
+
 OpenLLMetry est un projet open source (Traceloop) qui ajoute à OpenTelemetry l'instrumentation des applications d'IA générative. Il s'installe avec le SDK Traceloop et produit des traces, des métriques et des logs au format OpenTelemetry (OTLP).
 
 ## Ce que le SDK sait faire

@@ -1,5 +1,7 @@
 # Guide de l'atelier : ce qui tourne sur votre VM
 
+[English version](03-workshop-guide.md)
+
 Chaque participant dispose d'une VM Ubuntu 22.04 de taille Standard_B12ms (12 vCPU, 48 Go de mémoire, sans GPU). Tous les services tournent dans des conteneurs Docker, dans le dossier /opt/ai-lab/stack.
 
 ## Pages et accès

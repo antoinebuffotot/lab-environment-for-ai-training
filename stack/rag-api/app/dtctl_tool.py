@@ -110,7 +110,7 @@ async def run(command: str) -> str:
     if not installed():
         return "Erreur : dtctl n'est pas installé dans cette image."
     if not configured():
-        return f"Erreur : dtctl n'est pas configuré ({DTCTL_CONFIG} introuvable). Voir stack/mcp/README.md."
+        return f"Erreur : dtctl n'est pas configuré ({DTCTL_CONFIG} introuvable). Voir stack/mcp/README.fr.md."
     try:
         args = shlex.split(str(command))
     except ValueError as exc:

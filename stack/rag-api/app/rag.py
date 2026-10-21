@@ -199,10 +199,29 @@ async def ingest_text(source: str, text: str) -> int:
     return len(chunks)
 
 
+DOCS_LANG = os.getenv("DOCS_LANG", "en").strip().lower()
+
+
+def _wanted(file: Path, names: set[str]) -> bool:
+    """The knowledge base uses the English documents only (DOCS_LANG=en, the default).
+
+    Convention: `name.md` is the English version and `name.fr.md` the French one. French files are indexed only when
+    DOCS_LANG=fr, and then they replace their English counterpart. Other files (.txt, .pdf, .md without a French
+    version) are always indexed.
+    """
+    if file.name.endswith(".fr.md"):
+        return DOCS_LANG == "fr"
+    if file.suffix.lower() == ".md" and file.name[:-3] + ".fr.md" in names:
+        return DOCS_LANG != "fr"
+    return True
+
+
 async def ingest_dir(path: str) -> dict[str, int]:
     result = {}
-    for file in sorted(Path(path).glob("*")):
-        if file.suffix.lower() in ALLOWED_EXT and file.is_file():
+    files = sorted(Path(path).glob("*"))
+    names = {f.name for f in files}
+    for file in files:
+        if file.suffix.lower() in ALLOWED_EXT and file.is_file() and _wanted(file, names):
             text = extract_text(file.name, file.read_bytes())
             result[file.name] = await ingest_text(file.name, text)
     return result

@@ -1,89 +1,91 @@
-# Exercice : juger les réponses du modèle avec dt-evals
+# Exercise: judge the model's answers with dt-evals
+
+[Version française](README.fr.md)
 
 [dt-evals](https://docs.dynatrace.com/docs/observe/dynatrace-for-ai-observability/get-started/llm-judge-evaluation)
-lit les spans GenAI de votre service dans Dynatrace (ceux d'OpenLLMetry), demande à un **LLM juge** de les noter
-(fidélité aux sources, pertinence, hallucination, toxicité...) et écrit les notes dans Dynatrace, avec le lien vers
-la trace. Les résultats s'affichent dans **AI Observability > Evaluations** (fonction en Preview).
+reads the GenAI spans of your service in Dynatrace (those from OpenLLMetry), asks an **LLM judge** to score them
+(faithfulness to sources, relevance, hallucination, toxicity...) and writes the scores to Dynatrace, with the link to
+the trace. The results are displayed in **AI Observability > Evaluations** (Preview feature).
 
-Le juge n'est **pas** le modèle local : c'est un modèle externe (OpenAI par défaut) avec une **clé partagée fournie par le
-formateur**. Elle est déjà disponible dans le terminal du VS Code web. Elle est partagée et limitée en budget : gardez un
-échantillon petit (`--sample`) et ne la copiez pas ailleurs. Le contenu des traces évaluées part chez le fournisseur du juge
-(dt-evals masque d'abord les e-mails, téléphones, cartes bancaires, numéros de sécurité sociale).
+The judge is **not** the local model: it is an external model (OpenAI by default) with a **shared key provided by the
+trainer**. It is already available in the VS Code web terminal. It is shared and budget-limited: keep
+the sample small (`--sample`) and do not copy it elsewhere. The content of the evaluated traces is sent to the judge's provider
+(dt-evals first masks emails, phone numbers, credit cards, social security numbers).
 
-## 0. Préparer (une fois)
+## 0. Prepare (once)
 
-1. **OpenLLMetry doit être actif** sur votre VM (déployé avec l'option, ou `sudo stack/scripts/set-openllmetry.sh on <tenant> <token>`).
-2. **Garder les passages RAG dans les traces.** Par défaut, ils sont retirés des traces. Pour juger la *fidélité* aux documents,
-   le juge doit les voir (en SSH sur la VM) :
+1. **OpenLLMetry must be active** on your VM (deployed with the option, or `sudo stack/scripts/set-openllmetry.sh on <tenant> <token>`).
+2. **Keep the RAG passages in the traces.** By default, they are removed from the traces. To judge *faithfulness* to the documents,
+   the judge must see them (over SSH on the VM):
    ```bash
    sudo /opt/ai-lab/stack/scripts/set-rag-context.sh on
    ```
-   (`off` pour revenir au comportement par défaut). L'historique de conversation n'est jamais exporté.
-3. **Créer un token plateforme** (Account Management > My platform tokens) avec ces scopes :
+   (`off` to return to the default behavior). The conversation history is never exported.
+3. **Create a platform token** (Account Management > My platform tokens) with these scopes:
    `storage:spans:read`, `storage:buckets:read`, `storage:bizevents:read`, `storage:logs:read`,
-   `storage:events:write`, `storage:metrics:write`. Les deux scopes `write` servent à écrire les résultats d'évaluation.
+   `storage:events:write`, `storage:metrics:write`. The two `write` scopes are used to write the evaluation results.
 
-## 1. Générer des réponses à juger
+## 1. Generate answers to judge
 
-Dans le terminal du VS Code web (`http://<vm>:8080/`) :
+In the VS Code web terminal (`http://<vm>:8080/`):
 ```bash
 /workspace/scripts/generate-eval-traffic.sh 2 http://web
 ```
-Le script envoie un mélange de questions : couvertes par les documents, **hors documents** (pour provoquer des hallucinations),
-en d'autres langues, avec et sans RAG. Attendez une minute que les traces arrivent dans Dynatrace.
+The script sends a mix of questions: covered by the documents, **outside the documents** (to provoke hallucinations),
+in other languages, with and without RAG. Wait a minute for the traces to arrive in Dynatrace.
 
-## 2. Configurer dt-evals
+## 2. Configure dt-evals
 
 ```bash
 cd /workspace/evals
-export DT_API_TOKEN="dt0s16...."          # le token créé à l'étape 0 (ou : dt-evals doctor)
-curl -s http://web/api/health | grep -o '"service":"[^"]*"'    # le nom de votre service, ex. ai-lab-rag-api-03
+export DT_API_TOKEN="dt0s16...."          # the token created in step 0 (or: dt-evals doctor)
+curl -s http://web/api/health | grep -o '"service":"[^"]*"'    # the name of your service, e.g. ai-lab-rag-api-03
 dt-evals doctor
-dt-evals configure                         # URL (DT_ENV_URL est déjà calculée), fournisseur du juge, service à évaluer
+dt-evals configure                         # URL (DT_ENV_URL is already computed), judge provider, service to evaluate
 dt-evals validate
 ```
-`dt-eval.yaml.example` montre la forme du fichier `.dt-eval.yaml` ; l'assistant `configure` reste la référence.
-Le service à évaluer est celui de **votre VM** (`ai-lab-rag-api-NN` pour le chat, `ai-lab-agent-api-NN` pour l'agent).
+`dt-eval.yaml.example` shows the shape of the `.dt-eval.yaml` file; the `configure` wizard remains the reference.
+The service to evaluate is the one on **your VM** (`ai-lab-rag-api-NN` for the chat, `ai-lab-agent-api-NN` for the agent).
 
-## 3. Lancer l'évaluation
+## 3. Run the evaluation
 
 ```bash
-dt-evals run --since 1h --sample 20 --dry-run     # ce qui serait évalué, sans appeler le juge
+dt-evals run --since 1h --sample 20 --dry-run     # what would be evaluated, without calling the judge
 dt-evals run --since 1h --sample 20
 dt-evals runs list
 ```
-Si `--dry-run` ne trouve aucun span ou aucun contenu, les champs ne correspondent pas : voir `scope.spanFields` dans la doc
-(correspondance entre vos attributs et les champs `gen_ai.*` attendus).
+If `--dry-run` finds no span or no content, the fields do not match: see `scope.spanFields` in the docs
+(mapping between your attributes and the expected `gen_ai.*` fields).
 
-## 4. Lire les résultats
+## 4. Read the results
 
-- **AI Observability > Evaluations** : taux de réussite, scores moyens, distributions, dérive. Cliquez un résultat pour ouvrir la trace.
-- En DQL :
+- **AI Observability > Evaluations**: pass rate, average scores, distributions, drift. Click a result to open the trace.
+- In DQL:
   ```
   fetch bizevents
   | filter event.type == "gen_ai.evaluation.result"
   | sort timestamp desc
   | limit 20
   ```
-Questions à se poser : quelles réponses sont mal notées ? Les questions hors documents donnent-elles de l'hallucination ?
-Avec RAG et sans RAG, quel écart de fidélité ? L'explication du juge est-elle juste ?
+Questions to ask yourself: which answers are poorly scored? Do questions outside the documents produce hallucination?
+With RAG and without RAG, what is the faithfulness gap? Is the judge's explanation right?
 
-## 5. Créer un évaluateur personnalisé
+## 5. Create a custom evaluator
 
-`dt-evals evaluators add` crée un évaluateur LLM-juge à partir d'un critère. Deux idées qui reflètent le message système du chat :
-- **Citations** : « La réponse cite-t-elle les documents utilisés entre crochets, par exemple [1], quand des passages sont fournis ? »
-- **Langue** : « La réponse est-elle rédigée dans la même langue que la question ? »
+`dt-evals evaluators add` creates an LLM-judge evaluator from a criterion. Two ideas that reflect the chat's system message:
+- **Citations**: "Does the answer cite the documents used in square brackets, for example [1], when passages are provided?"
+- **Language**: "Is the answer written in the same language as the question?"
 
-Vérifiez-le avec `dt-evals evaluators show <nom>` et `dt-evals evaluators test <nom>`, puis ajoutez son nom à la liste
-`metrics.enabled` de `.dt-eval.yaml` et relancez `dt-evals run`.
+Check it with `dt-evals evaluators show <name>` and `dt-evals evaluators test <name>`, then add its name to the
+`metrics.enabled` list in `.dt-eval.yaml` and rerun `dt-evals run`.
 
-## 6. Comparer (pour aller plus loin)
+## 6. Compare (to go further)
 
-Changez la température ou le message système dans l'interface, regénérez du trafic (étape 1), relancez l'évaluation et comparez
-les scores (la *dérive* compare les scores récents à ceux des 7 derniers jours). `dt-evals run --ci` retourne une erreur si
-un score passe sous son seuil : c'est la brique pour un contrôle qualité automatique.
+Change the temperature or the system message in the interface, regenerate traffic (step 1), rerun the evaluation and compare
+the scores (the *drift* compares recent scores with those of the last 7 days). `dt-evals run --ci` returns an error if
+a score falls below its threshold: this is the building block for an automated quality check.
 
-## À savoir
-- dt-evals n'a pas de planificateur intégré : lancez-le à la main, ou depuis votre propre CI.
-- Un petit modèle juge parfois mal : lisez l'explication de la note avant de la croire.
-- Le tableau Evaluations est en Preview et peut changer.
+## Good to know
+- dt-evals has no built-in scheduler: run it by hand, or from your own CI.
+- A small model sometimes judges poorly: read the explanation of the score before trusting it.
+- The Evaluations table is in Preview and may change.

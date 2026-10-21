@@ -1,57 +1,50 @@
-# Lab environment for AI training
+# AI training environment (lab-environment-for-ai-training)
 
-Ce script permet de déployer rapidement plusieurs VM Ubuntu avec Docker sur une souscription Azure, pour un atelier / une formation autour de l'IA générative. Chaque participant dispose de sa propre VM avec :
+[Version française](README.fr.md)
 
-- un modèle léger **qwen2.5:7b** servi par Ollama (CPU uniquement) ;
-- une **interface web de chat** (port 80) avec réponses en streaming, citations cliquables, débit en jetons/s et un panneau de réglages (température, top K, top P, nombre de passages RAG, message système) ;
-- des **services RAG** : ChromaDB (base vectorielle), embeddings `nomic-embed-text`, API FastAPI (indexation, recherche, chat) ;
-- en option, **OpenLLMetry** (SDK Traceloop) qui envoie vers Dynatrace, via OTLP, les traces du prompt et de l'activité courante.
+This script quickly deploys several Ubuntu VMs with Docker on an Azure subscription, for a workshop / training course on generative AI and its observability. Each participant gets their own VM with:
 
-Projet inspiré de [lab-environment-for-dynatrace-training](https://github.com/JLLormeau/lab-environment-for-dynatrace-training) : mêmes principes (Azure Cloud Shell, menu interactif, une VM par utilisateur répartie sur 4 régions, script de suppression généré).
+- a lightweight **qwen2.5:7b** model served by Ollama (CPU only);
+- a **chat web interface** (port 80) with streaming responses, clickable citations, tokens/s throughput and a settings panel (temperature, top K, top P, number of RAG passages, system message);
+- **RAG services**: ChromaDB (vector database), `nomic-embed-text` embeddings, FastAPI API (indexing, search, chat);
+- an **AI agent application** (page `/agent.html`) that uses the same model, calls tools and displays each step;
+- a **VS Code in the browser** (port 8080) with a chat on the local model, dtctl, Node.js and dt-evals;
+- optionally, **OpenLLMetry** (Traceloop SDK), which sends the chat and agent traces and metrics to Dynatrace via OTLP, for AI Observability.
+
+Project inspired by [lab-environment-for-dynatrace-training](https://github.com/JLLormeau/lab-environment-for-dynatrace-training): same principles (Azure Cloud Shell, interactive menu, one VM per user spread over 4 regions, generated deletion script).
 
 ```
-                       VM Azure Standard_B12ms (Ubuntu 22.04, 12 vCPU / 48 Go)
- navigateur ──80──►  ┌─────────────────────────────────────────────────────────┐
-                     │ web (nginx) ──► rag-api (FastAPI) ──► chroma (vecteurs) │
-                     │                      │                                  │
-                     │                      └──────────► ollama                │
-                     │                                   qwen2.5:7b            │
-                     │                                   nomic-embed-text      │
-                     └──────────────────────────┬──────────────────────────────┘
-                                                │ OpenLLMetry (optionnel) : OTLP/HTTPS
+                       Azure VM Standard_B12ms (Ubuntu 22.04, 12 vCPU / 48 GB)
+ browser ───80──►    ┌───────────────────────────────────────────────────────────────┐
+            ──8080─► │ vscode (code-server)                                          │
+                     │ web (nginx) ──► rag-api   (FastAPI, RAG chat) ──► chroma      │
+                     │      └────────► agent-api (FastAPI, AI agent) ──► (vectors)   │
+                     │                      │                                        │
+                     │                      └──────────────► ollama                  │
+                     │                                       qwen2.5:7b              │
+                     │                                       nomic-embed-text        │
+                     └──────────────────────────┬────────────────────────────────────┘
+                                                │ OpenLLMetry (optional): OTLP/HTTPS
                                                 ▼
                                        Dynatrace  /api/v2/otlp
 ```
 
-Ouvrez votre souscription Azure, <https://portal.azure.com/>, puis le Cloud Shell (Bash).
+The detailed documentation is in [ARCHITECTURE.md](ARCHITECTURE.md) (architecture, technologies, flows, observability, security) and in [stack/exercices/README.md](stack/exercices/README.md) (exercise catalog with objectives, actions and expected results). Each Markdown file exists in English (`*.md`, default) and in French (`*.fr.md`).
 
-# Déployer l'environnement de formation
+Open your Azure subscription, <https://portal.azure.com/>, then the Cloud Shell (Bash).
 
-Dans le Cloud Shell, remplacez `<votre-compte>` par le compte GitHub qui héberge ce dépôt :
+# Deploy the training environment
+
+In the Cloud Shell, replace `<your-account>` with the GitHub account that hosts this repository:
 
 ```
 cd;if [ -d "./lab-environment-for-ai-training" ];then rm -rf ./lab-environment-for-ai-training;fi
-git clone https://github.com/<votre-compte>/lab-environment-for-ai-training.git
+git clone https://github.com/<your-account>/lab-environment-for-ai-training.git
 cd lab-environment-for-ai-training;chmod +x ./*.sh
 ./azure-cli-deploy-vm-for-training-ai.sh
 ```
 
-
-## Agent IA (page `/agent.html`)
-
-Une seconde page, avec la même interface (langues, réglages, onglet Observability), propose une **application agentique** qui utilise le même modèle local qu'avec le chat. L'agent décide seul d'appeler des outils (`search_documents`, `list_documents`, `calculator`, `get_current_time`), lit les résultats et recommence jusqu'à pouvoir répondre (nombre d'étapes limité). Chaque étape et chaque appel d'outil s'affichent.
-
-- Service Docker `agent-api` (même image que `rag-api`, code dans `stack/rag-api/app/agent.py` et `agent_main.py`), joint via nginx sur `/agent/api/`.
-- OpenLLMetry suit `OPENLLMETRY_ENABLED` par défaut ; pour l'activer ou le désactiver sur l'agent seul : `sudo stack/scripts/set-agent-openllmetry.sh on <tenant> <token>` / `off`.
-- **Architecture** : `ARCHITECTURE.md` documente le déploiement, la pile par VM, les flux (chat, agent, sous-agent), l'observabilité (spans, masquage du prompt), l'interface web, la configuration et la sécurité.
-- **Catalogue des exercices** : `stack/exercices/README.md` liste tous les exercices (blocs A à F) avec objectif, actions des participants et résultats attendus dans l'application web et dans Dynatrace ; il est accessible aux participants dans le VS Code web (`/workspace/exercices`).
-- **Sous-agent Dynatrace** : quand `mcp.json` déclare un serveur MCP, l'agent principal ne reçoit qu'un outil, `ask_dynatrace`. Il délègue à un sous-agent spécialisé (instruction et contexte propres, seuls les outils MCP) qui interroge Dynatrace et renvoie un court résumé. L'activité du sous-agent s'affiche dans la carte de l'outil. Traces : `agent.run` > `ask_dynatrace` (@tool) > `dynatrace_agent` (@agent) > étapes LLM et un span par appel MCP. `MCP_SUBAGENT=false` donne les outils MCP directement à l'agent principal ; `DT_AGENT_MAX_STEPS` limite les étapes du sous-agent (4 par défaut).
-- **dtctl et skills (exercices participants)** : le sous-agent Dynatrace peut aussi utiliser `dtctl` (CLI Dynatrace, en lecture seule : liste de commandes autorisées, pas de `config`/`apply`/`delete`…) que les participants configurent dans le terminal du VS Code web (`stack/mcp/README.md`), et des *skills* Dynatrace (`SKILL.md` de https://github.com/Dynatrace/dynatrace-for-ai) qu'ils copient dans `stack/skills/` (`stack/skills/README.md`). L'agent voit la liste courte des skills et lit une skill avec `read_skill` à la demande. L'état (dtctl, skills) s'affiche dans l'onglet Outils de la page agent.
-- **dt-evals (exercice participants)** : les participants jugent les réponses du modèle avec [dt-evals](https://docs.dynatrace.com/docs/observe/dynatrace-for-ai-observability/get-started/llm-judge-evaluation) (LLM-as-a-judge sur les traces) depuis le terminal du VS Code web (Node et dt-evals sont dans l'image ; dossier `stack/evals/`, voir `stack/evals/README.md`). Le juge est un modèle externe : le formateur fournit **une clé partagée** (menu des paramètres OpenLLMetry du script de déploiement : fournisseur `openai|anthropic|gemini` et clé, exposée dans le terminal sous le nom de variable du fournisseur). `stack/scripts/generate-eval-traffic.sh` produit des réponses variées (dont hors documents) et `stack/scripts/set-rag-context.sh on|off` garde les passages RAG dans les traces (nécessaire pour juger la fidélité aux sources).
-- **Outils MCP (exercice participants)** : l'agent lit le fichier `mcp.json` que les participants créent eux-mêmes dans le VS Code web (dossier `/workspace/mcp` = `stack/mcp`, voir `stack/mcp/README.md` et `mcp.json.example`) pour se connecter à un serveur MCP distant, par exemple le serveur MCP Dynatrace. Rechargement automatique, aucun redémarrage.
-- Le service Dynatrace s'appelle `ai-lab-agent-api-<numéro de la VM>` (le chat reste `ai-lab-rag-api-<numéro>`). Traces : `agent.run` (@agent) > `agent.step` (@task) > appel LLM Ollama, plus un span par outil (@tool).
-
-## Étape 1 - 20 environnements maximum
+## Step 1 - 20 environments maximum
 
 ```
 CONFIGURATION :
@@ -65,66 +58,91 @@ CONFIGURATION :
 A) apply and deploy the VM - (Ctrl/c to quit)
 ```
 
-| Option | Rôle |
+| Option | Role |
 |---|---|
-| 0 | Nom de la formation : préfixe des VM, des groupes de ressources et du DNS (`[a-z]{5}[a-z0-9]+`, ne commence pas par `azure`) |
-| 1 | Mot de passe commun (12 caractères minimum, minuscule, majuscule, chiffre, `@` ou `&`) |
-| 2 | Numéro de la première VM (de 00 à 19) |
-| 3 | Nombre de VM à créer (20 maximum au total) |
-| 4 | Active OpenLLMetry : le script demande ensuite le tenant et le token Dynatrace |
-| 5 | `Y` : les VM restent démarrées. `N` : elles sont arrêtées (désallouées) une fois installées |
+| 0 | Training name: prefix for the VMs, resource groups and DNS (`[a-z]{5}[a-z0-9]+`, does not start with `azure`) |
+| 1 | Shared password (12 characters minimum, lowercase, uppercase, digit, `@` or `&`), also used for web VS Code |
+| 2 | Number of the first VM (from 00 to 19) |
+| 3 | Number of VMs to create (20 maximum in total) |
+| 4 | Enables OpenLLMetry: the script then asks for the Dynatrace tenant and token, then the judge LLM key (optional) |
+| 5 | `Y`: the VMs stay running. `N`: they are stopped (deallocated) once installed |
 
-Les valeurs saisies sont mémorisées dans `.lab-config` (ignoré par git) pour le prochain lancement.
+The values entered are saved in `.lab-config` (ignored by git) for the next run.
 
-Les environnements sont déployés **en parallèle** (un journal par VM dans `logs/<horodatage>/`). L'installation d'une VM comprend Docker, la construction de l'API RAG et le téléchargement des modèles : comptez une quinzaine de minutes, selon le débit de téléchargement.
+The environments are deployed **in parallel** (one log per VM in `logs/<timestamp>/`). Installing a VM includes Docker, building the images and downloading the models: allow about fifteen minutes, depending on the download speed.
 
-Les VM sont réparties comme dans le projet d'origine, 5 par région :
+The VMs are spread as in the original project, 5 per region:
 
-| VM | Région |
+| VM | Region |
 |---|---|
-| 00 à 04 | francecentral |
-| 05 à 09 | westeurope |
-| 10 à 14 | northeurope |
-| 15 à 19 | uksouth |
+| 00 to 04 | francecentral |
+| 05 to 09 | westeurope |
+| 10 to 14 | northeurope |
+| 15 to 19 | uksouth |
 
-> **Quotas** : une `Standard_B12ms` consomme 12 vCPU. Cinq VM dans une région représentent 60 vCPU, à la fois sur le quota régional (*Total Regional vCPUs*) et sur celui de la famille *Standard BS Family*. Le script affiche ces quotas au démarrage et avertit si la taille n'est pas disponible dans une région. Les régions se changent dans `env.sh`.
+> **Quotas**: a `Standard_B12ms` uses 12 vCPUs. Five VMs in a region represent 60 vCPUs, against both the regional quota (*Total Regional vCPUs*) and the *Standard BS Family* quota. The script displays these quotas at startup and warns if the size is not available in a region. Regions are changed in `env.sh`.
 
-## Étape 2 - OpenLLMetry (option 4 = Y)
+## Step 2 - OpenLLMetry (option 4 = Y)
 
 ```
 PARAMETER (OpenLLMetry -> Dynatrace) :
 
 0) Tenant (without https://) =abc12345.live.dynatrace.com
 1) Token (scope : openTelemetryTrace.ingest) =dt0c01.XXXXX***
+2) LLM judge for dt-evals (optional) : provider =openai (openai | anthropic | gemini)
+3) LLM judge for dt-evals (optional) : shared API key =sk-pro***
 A) apply and deploy the VM - (Ctrl/c to quit)
 ```
 
-Créez un token d'API Dynatrace avec le scope `openTelemetryTrace.ingest` (seules des traces sont envoyées). Le token est saisi sans écho et ne sert qu'à renseigner le fichier `.env` des conteneurs sur chaque VM.
+Create a Dynatrace API token for OpenTelemetry ingestion. According to the [Dynatrace OpenLLMetry documentation](https://docs.dynatrace.com/docs/observe/dynatrace-for-ai-observability/get-started/openllmetry), a classic token needs the scopes `openTelemetryTrace.ingest`, `metrics.ingest` and `logs.ingest` (a platform token needs the scopes `openpipeline:traces:ingest`, `openpipeline:metrics:ingest` and `openpipeline:logs:ingest`). The token is entered without echo and is only used to populate the `.env` file of the containers on each VM.
 
-Quand l'option est active, l'application n'envoie que deux choses :
+Entries 2 and 3 are optional: they define the **shared judge LLM** used by dt-evals (see `stack/evals/README.md`). The key is exposed to participants in the terminal of their web VS Code: use a key with a limited budget and revoke it after the training.
 
-- **l'activité courante** : trois spans, `rag.chat` (workflow), `rag.retrieve` et `rag.generate` (tâches), avec leur durée ;
-- **le prompt** : tous les messages envoyés au modèle (message système, historique, passages retrouvés, question), dans les attributs `gen_ai.prompt.N.role` et `gen_ai.prompt.N.content` du span `rag.generate`. Ce span porte aussi le modèle et les réglages de la requête (`gen_ai.request.temperature`, `top_k`, `top_p`).
+When the option is enabled, the application follows the configuration documented by Dynatrace (`Traceloop.init` to the tenant's OTLP endpoint, metrics in `delta` temporality):
 
-Ne sont **pas** envoyés : les instrumentations automatiques (Ollama, ChromaDB, HTTP), le texte des réponses, les métriques et les logs. Les spans portent le nom de service `ai-lab-rag-api` et l'attribut `host.name` avec le FQDN de la VM.
+- **the activity**: for the chat, `rag.chat` (workflow) with `rag.retrieve` and `rag.generate` (tasks); for the agent, `agent.run`, some `agent.step`, one span per tool and, with Dynatrace access, `ask_dynatrace` then `dynatrace_agent`;
+- **the model call**: produced by the OpenLLMetry Ollama instrumentation, with the model, the settings (temperature, top K, top P), the input and output tokens and the streaming mode;
+- **the exported prompt**: the user's question, the system message and the response. The conversation history and the RAG passages are sent to the model but removed from the trace before export (SDK post-processing callback). To keep the RAG passages, for example for dt-evals evaluation: `sudo stack/scripts/set-rag-context.sh on`.
 
-Le prompt contient le texte des documents retrouvés et des questions : n'activez l'option qu'avec un tenant où ces contenus peuvent être stockés. Pour ne plus tracer le prompt, supprimez l'appel à `trace_prompt` dans `stack/rag-api/app/main.py`.
+Only the Ollama instrumentation is active (ChromaDB and HTTP are excluded). The Dynatrace services are named `ai-lab-rag-api-<VM number>` (chat) and `ai-lab-agent-api-<VM number>` (agent), with the `host.name` attribute carrying the VM's FQDN.
 
-## Réglages du chat
+The traces contain the text of the questions and responses: only enable the option with a tenant where this content may be stored. To stop tracing any prompt or response text, set `OPENLLMETRY_TRACE_CONTENT=false` in `stack/.env`.
 
-L'onglet **Paramètres** de l'interface web règle, pour la question suivante :
+## Training applications and tools
 
-| Réglage | Plage | Défaut | Effet |
+### AI agent (page `/agent.html`)
+
+A second page, with the same interface (languages, settings, Observability tab), provides an **agentic application** that uses the same local model as the chat. The agent decides on its own to call tools (`search_documents`, `list_documents`, `calculator`, `get_current_time`), reads the results and starts again until it can answer (limited number of steps). Each step and each tool call is displayed.
+
+- Docker service `agent-api` (same image as `rag-api`, code in `stack/rag-api/app/agent.py` and `agent_main.py`), reached through nginx on `/agent/api/`.
+- OpenLLMetry follows `OPENLLMETRY_ENABLED` by default; to enable or disable it on the agent alone: `sudo stack/scripts/set-agent-openllmetry.sh on <tenant> <token>` / `off`.
+- Traces: `agent.run` (@agent) > `agent.step` (@task) > Ollama LLM call, plus one span per tool (@tool).
+
+### Dynatrace sub-agent, MCP, dtctl and skills
+
+- **Dynatrace sub-agent**: when Dynatrace access exists (MCP server declared or dtctl configured), the main agent only receives one tool, `ask_dynatrace`. It delegates to a specialized sub-agent (its own instruction and context, only the Dynatrace tools) that queries the platform and returns a short summary. The sub-agent's activity is displayed in the tool's card. Traces: `agent.run` > `ask_dynatrace` (@tool) > `dynatrace_agent` (@agent) > LLM steps and one span per tool call. `MCP_SUBAGENT=false` gives the tools directly to the main agent; `DT_AGENT_MAX_STEPS` limits the sub-agent's steps (4 by default).
+- **MCP tools (participant exercise)**: the agent reads the `mcp.json` file that participants create themselves in web VS Code (folder `/workspace/mcp` = `stack/mcp`, see `stack/mcp/README.md` and `mcp.json.example`) to connect to a remote MCP server, for example the Dynatrace MCP server. Automatic reload, no restart.
+- **dtctl and skills (participant exercises)**: the sub-agent can also use `dtctl` (Dynatrace CLI, read-only: list of allowed commands, no `config`/`apply`/`delete`...) that participants configure in the web VS Code terminal (`stack/mcp/README.md`), and Dynatrace *skills* (`SKILL.md` from <https://github.com/Dynatrace/dynatrace-for-ai>) that they copy into `stack/skills/` (`stack/skills/README.md`). The agent sees the short list of skills and reads a skill with `read_skill` on demand. The state (dtctl, skills) is displayed in the Tools tab of the agent page.
+
+### Evaluating responses with dt-evals (participant exercise)
+
+Participants judge the model's responses with [dt-evals](https://docs.dynatrace.com/docs/observe/dynatrace-for-ai-observability/get-started/llm-judge-evaluation) (LLM-as-a-judge on traces) from the web VS Code terminal (Node and dt-evals are in the image; folder `stack/evals/`, see `stack/evals/README.md`). The judge is an external model: the trainer provides **a shared key** (step 2 of the deployment: provider `openai|anthropic|gemini` and key, exposed in the terminal under the provider's variable name). `stack/scripts/generate-eval-traffic.sh` produces varied responses (including out-of-document ones) and `stack/scripts/set-rag-context.sh on|off` keeps the RAG passages in the traces (needed to judge faithfulness to the sources).
+
+## Chat settings
+
+The **Settings** tab of the web interface adjusts, for the next question:
+
+| Setting | Range | Default | Effect |
 |---|---|---|---|
-| Température | 0 à 2 | 0,3 | Basse : réponses stables. Haute : réponses plus variées |
-| Top K | 1 à 100 | 40 | Nombre de jetons candidats examinés à chaque étape |
-| Top P | 0 à 1 | 0,9 | Probabilité cumulée maximale des candidats conservés |
-| Passages de documents | 1 à 8 | 3 | Nombre de passages RAG ajoutés au prompt |
-| Message système | texte libre | message de l'atelier | Rôle et ton du modèle. Laissé vide, le message par défaut est utilisé |
+| Temperature | 0 to 2 | 0.3 | Low: stable responses. High: more varied responses |
+| Top K | 1 to 100 | 40 | Number of candidate tokens examined at each step |
+| Top P | 0 to 1 | 0.9 | Maximum cumulative probability of the candidates kept |
+| Document passages | 1 to 8 | 3 | Number of RAG passages added to the prompt |
+| System message | free text | workshop message, in the chosen language | Role and tone of the model. The default text follows the interface language as long as it has not been modified |
 
-Les réglages sont mémorisés dans le navigateur, et le bouton « Rétablir les valeurs par défaut » les remet à zéro. Le débit et les réglages utilisés s'affichent sous chaque réponse, ce qui permet de comparer.
+The settings are saved in the browser, and the "Restore default values" button resets them. The throughput and the settings used are displayed under each response, which makes comparison possible. The conversation is kept when switching from the Chat page to the Agent page and vice versa.
 
-**Activer ou désactiver après coup**, en SSH sur la VM :
+**Enable or disable OpenLLMetry afterwards**, over SSH on the VM:
 
 ```
 cd /opt/ai-lab/stack
@@ -132,7 +150,7 @@ sudo scripts/set-openllmetry.sh on <tenant> <token>
 sudo scripts/set-openllmetry.sh off
 ```
 
-## Liste des environnements créés
+## List of created environments
 
 ```
 ENVIRONMENT : Linux
@@ -142,90 +160,104 @@ user01;aitraining01.francecentral.cloudapp.azure.com;http://aitraining01.francec
 user02;aitraining02.francecentral.cloudapp.azure.com;http://aitraining02.francecentral.cloudapp.azure.com/;DummyP@ssword00
 ```
 
-## Accès - exemple pour user00 avec le nom de formation `aitraining`
+## Access - example for user00 with the training name `aitraining`
 
-| Service | Accès |
+| Service | Access |
 |---|---|
-| Chat web | `http://aitraining00.francecentral.cloudapp.azure.com/` |
+| Web chat | `http://aitraining00.francecentral.cloudapp.azure.com/` |
+| AI agent | `http://aitraining00.francecentral.cloudapp.azure.com/agent.html` |
+| Web VS Code | `http://aitraining00.francecentral.cloudapp.azure.com:8080/` (VM password) |
 | SSH | `ssh user00@aitraining00.francecentral.cloudapp.azure.com` |
-| API (via nginx) | `http://aitraining00.francecentral.cloudapp.azure.com/api/health` |
+| Chat API (via nginx) | `http://aitraining00.francecentral.cloudapp.azure.com/api/health` |
+| Agent API (via nginx) | `http://aitraining00.francecentral.cloudapp.azure.com/agent/api/health` |
 
-Seuls les ports 22, 80 et 8080 (VS Code web, protégé par le mot de passe de la VM) sont ouverts. Ollama et ChromaDB ne sont joignables que depuis le réseau Docker de la VM : pour les interroger directement (par exemple `curl` sur l'API Ollama), publiez leur port dans `stack/docker-compose.yml` sur `127.0.0.1` et passez par un tunnel SSH.
+Only ports 22, 80 and 8080 (web VS Code, protected by the VM password) are open. Ollama and ChromaDB are only reachable from the VM's Docker network: to query them directly (for example `curl` on the Ollama API), publish their port in `stack/docker-compose.yml` on `127.0.0.1` and go through an SSH tunnel.
 
-Si l'option 5 vaut `N`, démarrez les VM depuis le portail Azure avant la formation. La pile redémarre toute seule (`restart: unless-stopped`) ; la première réponse est plus lente car le modèle est rechargé en mémoire.
+If option 5 is `N`, start the VMs from the Azure portal before the training. The stack restarts by itself (`restart: unless-stopped`); the first response is slower because the model is reloaded into memory.
 
-## Sur la VM
+## On the VM
 
 ```
 cd /opt/ai-lab/stack
-docker compose ps                    # état des services
-docker compose logs -f rag-api       # journaux de l'API RAG
-curl localhost/api/health            # modèles prêts, documents indexés, OpenLLMetry actif ou non
-scripts/generate-traffic.sh 10       # 10 questions pour produire des traces
-sudo tail -f /var/log/ai-lab-setup.log   # journal de l'installation
+docker compose ps                    # service status
+docker compose logs -f rag-api       # chat API logs (agent-api for the agent)
+curl localhost/api/health            # models ready, documents indexed, OpenLLMetry active or not
+curl localhost/agent/api/health      # same for the agent, with dtctl, skills and MCP servers
+scripts/generate-traffic.sh 10       # 10 questions to produce traces
+sudo tail -f /var/log/ai-lab-setup.log   # installation log
 ```
 
-## API RAG
+## Chat API (RAG)
 
-| Méthode | Route | Rôle |
+| Method | Route | Role |
 |---|---|---|
-| GET | `/api/health` | État des modèles, de l'indexation et d'OpenLLMetry |
-| GET | `/api/settings` | Réglages par défaut du chat et message système par défaut |
-| POST | `/api/chat` | Question, historique et réglages (`temperature`, `top_k`, `top_p`, `passages`, `system_prompt`), réponse en streaming SSE (`sources`, `token`, `done`, `error`) |
-| POST | `/api/search` | Recherche vectorielle seule, sans génération (champs `query`, `passages`) |
-| GET / DELETE | `/api/documents` | Liste et suppression des documents indexés |
-| POST | `/api/upload` | Ajout d'un document (.txt, .md, .pdf, 5 Mo maximum) |
-| POST | `/api/ingest` | Réindexation des documents d'exemple (`stack/docs/`) |
+| GET | `/api/health` | State of the models, indexing, OpenLLMetry and service name |
+| GET | `/api/settings` | Default chat settings and default system messages (per language) |
+| POST | `/api/chat` | Question, history and settings (`temperature`, `top_k`, `top_p`, `passages`, `system_prompt`), SSE streaming response (`sources`, `token`, `done`, `error`) |
+| POST | `/api/search` | Vector search only, without generation (fields `query`, `passages`) |
+| GET / DELETE | `/api/documents` | List and deletion of indexed documents |
+| POST | `/api/upload` | Add a document (.txt, .md, .pdf, 5 MB maximum) |
+| POST | `/api/ingest` | Reindexing of the sample documents (`stack/docs/`) |
+| GET | `/api/observability/code` | OpenLLMetry configuration code (Observability tab) |
 
-Exemple :
+The agent API (`/agent/api/…`) exposes `health`, `settings`, `tools`, `observability/code` and `chat` (SSE streaming: `step`, `token`, `tool_call`, `tool_result`, `warning`, `done`, `error`).
+
+Example:
 
 ```
 curl -sN localhost/api/chat -H 'Content-Type: application/json' \
      -d '{"message":"C'"'"'est quoi OpenLLMetry ?","use_rag":true}'
 ```
 
-Pour changer le contenu de base de l'atelier, ajoutez des fichiers `.md`, `.txt` ou `.pdf` dans `stack/docs/` avant le déploiement : ils sont indexés au premier démarrage de chaque VM.
+To change the base content of the workshop, add `.md`, `.txt` or `.pdf` files in `stack/docs/` before deployment: they are indexed on the first start of each VM (on an existing VM, use "Reindex the samples"). Only the English files (`*.md`) are indexed by default; the `*.fr.md` files are indexed only when `DOCS_LANG=fr` (they then replace the English versions).
 
-## Performances et coûts
+## Performance and costs
 
-- Le modèle tourne **sans GPU** : attendez-vous à quelques jetons par seconde. L'interface affiche le débit réel de chaque réponse, ce qui sert aussi de support pédagogique.
-- La première question après un démarrage est plus longue (chargement du modèle en mémoire).
-- Une `Standard_B12ms` est une VM coûteuse : arrêtez-les (option 5 = `N`, ou depuis le portail) entre deux sessions et supprimez-les en fin de formation.
-- Pour changer de modèle, modifiez `LLM_MODEL` dans `env.sh` (par exemple un autre modèle de la bibliothèque Ollama). Le prompt système est dans `stack/rag-api/app/rag.py`.
+- The model runs **without a GPU**: expect a few tokens per second. The interface displays the actual throughput of each response, which also serves as a teaching aid.
+- The first question after a start is longer (loading the model into memory). An agent chains several model calls: a task with several tools can take several minutes.
+- A `Standard_B12ms` is an expensive VM: stop them (option 5 = `N`, or from the portal) between two sessions and delete them at the end of the training.
+- To change the model, modify `LLM_MODEL` in `env.sh` (for example another model from the Ollama library). The default system messages are in `stack/rag-api/app/rag.py` (chat) and `agent.py` (agent).
 
-## Dernière étape - Supprimer les groupes de ressources
+## Last step - Delete the resource groups
 
-À la fin, utilisez le script généré dans le répertoire du projet pour nettoyer la souscription :
-
-```
-./delete_resourcegroup_aitraining_<horodatage>.sh
-```
-
-Il supprime les groupes de ressources créés (`az group delete --no-wait`) et contient en commentaire la liste des comptes.
-
-## Structure du dépôt
+At the end, use the script generated in the project directory to clean up the subscription:
 
 ```
-azure-cli-deploy-vm-for-training-ai.sh   script principal et menu
-azuredeploy-ubuntu22.json                template ARM (VM, IP publique statique + DNS, NSG 22/80/8080)
-vm-setup.sh                              installation sur la VM (Docker, pile IA), exécuté via az vm run-command
-env.sh                                   taille de VM, régions, modèles, valeurs par défaut
+./delete_resourcegroup_aitraining_<timestamp>.sh
+```
+
+It deletes the created resource groups (`az group delete --no-wait`) and contains the list of accounts as a comment.
+
+## Repository structure
+
+```
+azure-cli-deploy-vm-for-training-ai.sh   main script and menu
+azuredeploy-ubuntu22.json                ARM template (VM, static public IP + DNS, NSG 22/80/8080)
+vm-setup.sh                              installation on the VM (Docker, AI stack), run via az vm run-command
+env.sh                                   VM size, regions, models, default values
+ARCHITECTURE.md  README.md               documentation (English: *.md, French: *.fr.md)
 stack/
-  docker-compose.yml                     ollama, ollama-init, chroma, rag-api, web
-  nginx.conf                             reverse proxy (streaming SSE)
-  web/index.html                         interface de chat
-  rag-api/                               API FastAPI : RAG + OpenLLMetry optionnel
-  docs/                                  documents d'exemple indexés au démarrage
-  scripts/                               set-openllmetry.sh, generate-traffic.sh
+  docker-compose.yml                     ollama, ollama-init, chroma, rag-api, agent-api, web, vscode
+  nginx.conf                             reverse proxy (SSE streaming)
+  web/                                   index.html (chat), agent.html (agent), common.css, common.js
+  rag-api/                               shared Python image: RAG chat, agent, MCP, dtctl, skills, OpenLLMetry
+  vscode/                                code-server (Continue, dtctl, Node.js, dt-evals)
+  docs/                                  sample documents indexed at startup (only the English *.md files are indexed by default, see DOCS_LANG)
+  mcp/  skills/  evals/                  workspaces for the participant exercises
+  exercices/                             exercise catalog
+  scripts/                               OpenLLMetry scripts (chat, agent), RAG context, traffic generation
 ```
 
-Le dossier `stack/` est embarqué dans le script envoyé à chaque VM : le dépôt peut donc être privé et vos modifications locales sont prises en compte au déploiement suivant.
+The `stack/` folder is embedded in the script sent to each VM: the repository can therefore be private and your local changes are picked up at the next deployment.
 
-## Dépannage
+## Troubleshooting
 
-| Symptôme | Piste |
+| Symptom | Lead |
 |---|---|
-| `QuotaExceeded` / `SkuNotAvailable` | Quota vCPU insuffisant ou `Standard_B12ms` indisponible dans la région : changez les régions dans `env.sh` ou demandez une augmentation de quota |
-| Environnement `FAILED` ou `setup not confirmed` | Lisez `logs/<horodatage>/<env>.log`, puis `/var/log/ai-lab-setup.log` sur la VM (la VM est laissée démarrée dans ce cas) |
-| Le chat affiche « le modèle se télécharge » | Le téléchargement n'est pas fini : `docker compose logs ollama-init` |
-| Pas de traces dans Dynatrace | `curl localhost/api/health` doit renvoyer `"openllmetry":true` ; sinon vérifiez tenant et token (`docker compose logs rag-api`) |
+| `QuotaExceeded` / `SkuNotAvailable` | Insufficient vCPU quota or `Standard_B12ms` unavailable in the region: change the regions in `env.sh` or request a quota increase |
+| Environment `FAILED` or `setup not confirmed` | Read `logs/<timestamp>/<env>.log`, then `/var/log/ai-lab-setup.log` on the VM (the VM is left running in this case) |
+| The chat displays "the model is downloading" | The download is not finished: `docker compose logs ollama-init` |
+| No traces in Dynatrace | `curl localhost/api/health` must return `"openllmetry":true`; otherwise check the tenant and token (`docker compose logs rag-api`) |
+| The agent page displays "Service unreachable" or `502` | `agent-api` is not started: `docker compose up -d agent-api web`, then `docker compose logs agent-api` |
+| The agent does not use the MCP tools | `curl localhost/agent/api/health`: read the state of each server in `mcp` (401: token; 403: `mcp-gateway:*` permissions; otherwise network); limit the tools with `"tools"` in `mcp.json` |
+| Truncated agent responses | Context window full: orange alert in the page; increase `AGENT_NUM_CTX` or reduce the tools |

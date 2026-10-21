@@ -53,6 +53,8 @@ services:
       LLM_MODEL: ${LLM_MODEL:-qwen2.5:7b}
       EMBED_MODEL: ${EMBED_MODEL:-nomic-embed-text}
       DOCS_DIR: /data/docs
+      # knowledge base: the English documents (name.md) are indexed; DOCS_LANG=fr indexes the French ones (name.fr.md) instead
+      DOCS_LANG: ${DOCS_LANG:-en}
       VM_FQDN: ${VM_FQDN:-localhost}
       # OpenLLMetry (Traceloop SDK) -> Dynatrace OTLP
       OPENLLMETRY_ENABLED: ${OPENLLMETRY_ENABLED:-false}

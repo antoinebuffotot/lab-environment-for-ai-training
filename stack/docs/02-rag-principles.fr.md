@@ -1,5 +1,7 @@
 # Principes du RAG (Retrieval-Augmented Generation)
 
+[English version](02-rag-principles.md)
+
 Le RAG consiste à donner au modèle les bons extraits de documents au moment de répondre, au lieu de compter uniquement sur ce qu'il a appris pendant son entraînement.
 
 ## Étape 1 : indexer les documents

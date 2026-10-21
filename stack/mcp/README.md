@@ -1,65 +1,67 @@
-# Exercice : connecter l'agent à un serveur MCP Dynatrace
+# Exercise: connect the agent to a Dynatrace MCP server
 
-Ce dossier (`/workspace/mcp`) est le dossier par défaut du VS Code web (`http://<vm>:8080/`).
-L'agent (`http://<vm>/agent.html`) lit le fichier **`mcp.json`** de ce dossier : à vous de le créer.
+[Version française](README.fr.md)
 
-## 1. Créer un token plateforme dans Dynatrace
+This folder (`/workspace/mcp`) is the default folder of the web VS Code (`http://<vm>:8080/`).
+The agent (`http://<vm>/agent.html`) reads the **`mcp.json`** file in this folder: you have to create it.
+
+## 1. Create a platform token in Dynatrace
 
 1. **Access Tokens** > **Generate new token**.
-2. Scopes : `mcp-gateway:servers:invoke` et `mcp-gateway:servers:read`, plus les droits de lecture voulus
-   (par exemple `storage:logs:read`, `storage:entities:read`, `storage:metrics:read`, `storage:events:read`,
+2. Scopes: `mcp-gateway:servers:invoke` and `mcp-gateway:servers:read`, plus the read permissions you want
+   (for example `storage:logs:read`, `storage:entities:read`, `storage:metrics:read`, `storage:events:read`,
    `storage:spans:read`, `document:documents:read`, `davis:analyzers:read`, `davis:analyzers:execute`).
-3. Copiez le token (`dt0s16.…`), il n'est affiché qu'une fois.
+3. Copy the token (`dt0s16.…`); it is displayed only once.
 
-Votre utilisateur doit lui aussi avoir ces permissions : le token ne peut pas faire plus que vous.
+Your user must also have these permissions: the token cannot do more than you can.
 
-## 2. Créer `mcp.json`
+## 2. Create `mcp.json`
 
-Copiez `mcp.json.example` en `mcp.json`, puis remplacez l'URL de votre environnement et le token.
-URL du serveur : `https://<environnement>.apps.dynatrace.com/platform-reserved/mcp-gateway/v0.1/servers/dynatrace-mcp/mcp`
+Copy `mcp.json.example` to `mcp.json`, then replace the URL of your environment and the token.
+Server URL: `https://<environnement>.apps.dynatrace.com/platform-reserved/mcp-gateway/v0.1/servers/dynatrace-mcp/mcp`
 
-- `url` : serveur MCP **distant** (HTTP). Les serveurs locaux (stdio) ne sont pas gérés.
-- `headers` : en-têtes envoyés au serveur. `${NOM}` est remplacé par la variable d'environnement `NOM`.
-- `tools` (facultatif) : liste des outils autorisés. À utiliser : le modèle choisit mieux avec quelques outils, et cela évite les outils qui écrivent dans Dynatrace.
+- `url`: **remote** MCP server (HTTP). Local servers (stdio) are not supported.
+- `headers`: headers sent to the server. `${NOM}` is replaced by the environment variable `NOM`.
+- `tools` (optional): list of allowed tools. Recommended: the model chooses better with a few tools, and it avoids the tools that write to Dynatrace.
 
-Le fichier contient un secret : il reste sur votre VM (ignoré par git), ne le partagez pas.
+The file contains a secret: it stays on your VM (ignored by git), do not share it.
 
-## 3. Vérifier
+## 3. Verify
 
-Ouvrez la page de l'agent, onglet **Outils** : une ligne « Serveurs MCP » indique l'état de la connexion
-(erreur 401 : token invalide ; 403 : droits manquants, vérifiez `mcp-gateway:servers:invoke`).
-Aucun redémarrage n'est nécessaire (rechargement automatique dans la minute).
-Puis posez une question, par exemple : « Quels problèmes sont ouverts dans Dynatrace ? ».
-Avec OpenLLMetry actif, chaque appel MCP apparaît dans la trace comme un span d'outil.
+Open the agent page, **Tools** tab: an "MCP servers" line shows the connection status
+(error 401: invalid token; 403: missing permissions, check `mcp-gateway:servers:invoke`).
+No restart is needed (automatic reload within a minute).
+Then ask a question, for example: "Which problems are open in Dynatrace?".
+With OpenLLMetry active, each MCP call appears in the trace as a tool span.
 
 ---
 
-# Exercice : donner dtctl à l'agent
+# Exercise: give dtctl to the agent
 
-`dtctl` est la ligne de commande de Dynatrace (https://github.com/Dynatrace/dtctl), installée dans le VS Code web et dans
-l'image de l'agent. Une fois configurée, l'agent (sous-agent Dynatrace) l'utilise comme outil en **lecture seule**
+`dtctl` is the Dynatrace command line (https://github.com/Dynatrace/dtctl), installed in the web VS Code and in
+the agent image. Once configured, the agent (Dynatrace sub-agent) uses it as a **read-only** tool
 (`query`, `get`, `describe`, `logs`, `inventory`, `commands`, `exec copilot nl2dql|dql2nl`).
 
-## 1. Créer un token plateforme en lecture seule
-Account Management > **My platform tokens**. Pour connaître les droits minimaux de vos commandes :
-`dtctl commands --required-scopes`. Pour des requêtes simples, `storage:logs:read`, `storage:events:read`,
+## 1. Create a read-only platform token
+Account Management > **My platform tokens**. To find the minimum permissions for your commands:
+`dtctl commands --required-scopes`. For simple queries, `storage:logs:read`, `storage:events:read`,
 `storage:metrics:read`, `storage:spans:read`, `storage:entities:read`, `storage:smartscape:read`,
-`davis:analyzers:read`, `app-engine:apps:run`, `document:documents:read` en sont un bon point de départ.
-Le niveau de sécurité `readonly` de dtctl n'est appliqué que côté client : c'est le token qui protège vraiment.
+`davis:analyzers:read`, `app-engine:apps:run`, `document:documents:read` are a good starting point.
+The `readonly` safety level of dtctl is enforced only on the client side: it is the token that really protects you.
 
-## 2. Configurer dtctl (terminal du VS Code web)
+## 2. Configure dtctl (web VS Code terminal)
 ```bash
 dtctl config set-context formation   --environment "https://<environnement>.apps.dynatrace.com"   --token-ref formation-token   --safety-level readonly
 dtctl config set-credentials formation-token --token "dt0s16.XXXX.YYYY"
 dtctl doctor
 ```
-La configuration est écrite dans `/workspace/mcp/dtctl-config` (variable `DTCTL_CONFIG` déjà positionnée), le fichier
-que lit l'agent. Il contient le token : ne le partagez pas (ignoré par git). Si dtctl demande un contexte courant,
-vérifiez `dtctl config --help` ou renseignez `DTCTL_CONTEXT` dans `stack/.env`.
+The configuration is written to `/workspace/mcp/dtctl-config` (variable `DTCTL_CONFIG` already set), the file
+that the agent reads. It contains the token: do not share it (ignored by git). If dtctl asks for a current context,
+check `dtctl config --help` or set `DTCTL_CONTEXT` in `stack/.env`.
 
-## 3. Vérifier
-Page de l'agent, onglet **Outils** : la ligne « dtctl » doit indiquer « prêt (lecture seule) ». Posez ensuite une question
-sur votre environnement : la trace montre le sous-agent qui appelle `dtctl`, comme il appelle les outils MCP.
-Les commandes qui modifient quoi que ce soit (`apply`, `create`, `edit`, `delete`, `config`, `auth`...) sont refusées
-par l'agent.
+## 3. Verify
+Agent page, **Tools** tab: the "dtctl" line must show "ready (read-only)". Then ask a question
+about your environment: the trace shows the sub-agent calling `dtctl`, just as it calls the MCP tools.
+Commands that modify anything (`apply`, `create`, `edit`, `delete`, `config`, `auth`...) are refused
+by the agent.
 

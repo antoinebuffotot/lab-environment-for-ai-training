@@ -1,32 +1,34 @@
-# Architecture de l'environnement de formation
+# Training environment architecture
 
-Document destiné aux formateurs et aux mainteneurs. Il décrit ce qui est déployé, comment les composants communiquent, comment la
-télémétrie est produite et où se règle chaque comportement. Les exercices sont dans `stack/exercices/README.md`.
+[Version française](ARCHITECTURE.fr.md)
 
-## 1. Vue d'ensemble
+Document intended for trainers and maintainers. It describes what is deployed, how the components communicate, how the
+telemetry is produced and where each behavior is configured. The exercises are in `stack/exercices/README.md`.
 
-Chaque participant reçoit **sa propre VM** Azure (Ubuntu 22.04, `Standard_B12ms`, 12 vCPU, 48 Go, sans GPU). Sur cette VM, une pile
-Docker Compose fait tourner un modèle local (Ollama), une application de chat RAG, une application d'agent IA et un VS Code dans le
-navigateur. Les applications envoient leur télémétrie (OpenLLMetry) au tenant Dynatrace de la formation.
+## 1. Overview
+
+Each participant receives **their own** Azure VM (Ubuntu 22.04, `Standard_B12ms`, 12 vCPU, 48 GB, no GPU). On this VM, a Docker
+Compose stack runs a local model (Ollama), a RAG chat application, an AI agent application and a VS Code in the
+browser. The applications send their telemetry (OpenLLMetry) to the training's Dynatrace tenant.
 
 ```mermaid
 flowchart LR
   subgraph Participant
-    B[Navigateur]
+    B[Browser]
   end
-  subgraph VM["VM du participant (Docker Compose)"]
+  subgraph VM["Participant VM (Docker Compose)"]
     W[web - nginx :80]
-    R[rag-api - chat RAG]
-    A[agent-api - agent IA]
+    R[rag-api - RAG chat]
+    A[agent-api - AI agent]
     C[(chroma)]
     O[ollama - qwen2.5:7b + nomic-embed-text]
     V[vscode - code-server :8080]
   end
-  subgraph Dynatrace["Tenant Dynatrace"]
-    D[Traces, métriques, AI Observability]
+  subgraph Dynatrace["Dynatrace tenant"]
+    D[Traces, metrics, AI Observability]
     G[MCP gateway]
   end
-  J[LLM juge externe]
+  J[External judge LLM]
   B -->|"/ , /agent.html"| W
   B -->|":8080"| V
   W -->|"/api/*"| R
@@ -40,313 +42,314 @@ flowchart LR
   A -.->|"OTLP (OpenLLMetry)"| D
   V --> O
   V -.->|"dt-evals"| D
-  V -.->|"jugement"| J
+  V -.->|"judging"| J
 ```
 
-Trois couches :
-1. **Déploiement** (poste du formateur) : scripts Azure CLI qui créent N VM en parallèle.
-2. **Pile applicative** (par VM) : sept conteneurs, décrits en section 4.
-3. **Dynatrace** : ingestion OTLP, AI Observability, serveur MCP, évaluations.
+Three layers:
+1. **Deployment** (trainer's workstation): Azure CLI scripts that create N VMs in parallel.
+2. **Application stack** (per VM): seven containers, described in section 4.
+3. **Dynatrace**: OTLP ingestion, AI Observability, MCP server, evaluations.
 
-## 2. Technologies utilisées
+## 2. Technologies used
 
-### Plateforme et déploiement
-| Technologie | Usage |
+### Platform and deployment
+| Technology | Usage |
 |---|---|
-| Microsoft Azure, Azure CLI, modèle ARM | Création des VM, de l'IP publique, du réseau et du groupe de sécurité ; `az vm run-command` pour installer la pile |
-| Ubuntu 22.04 (`Standard_B12ms`, CPU seul) | Système des VM |
-| Docker et Docker Compose | Exécution de la pile de sept conteneurs |
-| Bash | Scripts de déploiement, d'installation, d'activation d'OpenLLMetry et de génération de trafic |
+| Microsoft Azure, Azure CLI, ARM template | Creation of the VMs, public IP, network and security group; `az vm run-command` to install the stack |
+| Ubuntu 22.04 (`Standard_B12ms`, CPU only) | VM operating system |
+| Docker and Docker Compose | Running the seven-container stack |
+| Bash | Deployment, installation, OpenLLMetry activation and traffic generation scripts |
 
-### Modèles d'IA
-| Technologie | Usage |
+### AI models
+| Technology | Usage |
 |---|---|
-| Ollama | Serveur de modèles local (API de chat, d'embedding, appels d'outils) |
-| `qwen2.5:7b` | Modèle de génération et d'appel d'outils (CPU, quelques jetons par seconde) |
-| `nomic-embed-text` | Modèle d'embedding des documents et des questions |
-| ChromaDB 0.6.3 | Base vectorielle (RAG), similarité cosinus |
+| Ollama | Local model server (chat API, embedding API, tool calls) |
+| `qwen2.5:7b` | Generation and tool-calling model (CPU, a few tokens per second) |
+| `nomic-embed-text` | Embedding model for documents and questions |
+| ChromaDB 0.6.3 | Vector database (RAG), cosine similarity |
 
-### Backend (image Python 3.11 partagée par le chat et l'agent)
-| Technologie | Usage |
+### Backend (Python 3.11 image shared by the chat and the agent)
+| Technology | Usage |
 |---|---|
-| Python 3.11 (`python:3.11-slim`) | Langage des deux API |
-| FastAPI, Uvicorn, Pydantic | API HTTP, validation des requêtes, réponses en streaming (SSE) |
-| `ollama` (client Python) | Appels asynchrones au modèle et aux embeddings |
-| `chromadb` (client), NumPy < 2 | Accès à la base vectorielle |
-| `pypdf`, `python-multipart` | Extraction du texte des PDF, envoi de fichiers |
-| `mcp` (SDK Python, version 1.x) | Client du protocole MCP (Streamable HTTP) |
-| `asyncio` | Concurrence, file d'événements entre l'agent et la réponse HTTP |
+| Python 3.11 (`python:3.11-slim`) | Language of both APIs |
+| FastAPI, Uvicorn, Pydantic | HTTP API, request validation, streaming responses (SSE) |
+| `ollama` (Python client) | Asynchronous calls to the model and to the embeddings |
+| `chromadb` (client), NumPy < 2 | Access to the vector database |
+| `pypdf`, `python-multipart` | PDF text extraction, file upload |
+| `mcp` (Python SDK, version 1.x) | MCP protocol client (Streamable HTTP) |
+| `asyncio` | Concurrency, event queue between the agent and the HTTP response |
 
-### Agent IA (aucun framework d'agent)
-L'agent est écrit à la main en Python : il n'utilise ni LangChain, ni LangGraph, ni CrewAI. La boucle tient en une soixantaine de lignes
-dans `agent.py`.
+### AI agent (no agent framework)
+The agent is hand-written in Python: it uses neither LangChain, nor LangGraph, nor CrewAI. The loop fits in about sixty lines
+in `agent.py`.
 
-| Technologie | Usage |
+| Technology | Usage |
 |---|---|
-| `qwen2.5:7b` via Ollama | Raisonnement et choix des outils, avec l'appel d'outils natif d'Ollama (définitions en JSON schema passées à `chat`) |
-| Python 3.11 et `asyncio` | Boucle de l'agent : appel au modèle, exécution des outils demandés, ajout des résultats, nouvel appel, nombre d'étapes maximal |
-| Sous-agent Dynatrace | La même boucle, appelée comme un outil (`ask_dynatrace`) avec sa propre instruction et son propre contexte |
-| FastAPI, Server-Sent Events, `asyncio.Queue` | API de l'agent et diffusion des étapes vers le navigateur |
-| SDK `mcp` (1.x), Streamable HTTP | Outils de la passerelle MCP de Dynatrace |
-| Sous-processus sans shell, liste blanche | Outil `dtctl` en lecture seule |
-| Lecture de fichiers `SKILL.md` | Skills chargées à la demande |
-| `ast` (bibliothèque standard) | Outil de calcul : expression arithmétique analysée et évaluée sans `eval` |
-| OpenLLMetry (`@agent`, `@task`, `@tool`) | Un span par étape et par outil |
+| `qwen2.5:7b` via Ollama | Reasoning and tool selection, with Ollama's native tool calling (JSON schema definitions passed to `chat`) |
+| Python 3.11 and `asyncio` | Agent loop: model call, execution of the requested tools, adding the results, new call, maximum number of steps |
+| Dynatrace sub-agent | The same loop, called as a tool (`ask_dynatrace`) with its own instruction and its own context |
+| FastAPI, Server-Sent Events, `asyncio.Queue` | Agent API and streaming of the steps to the browser |
+| `mcp` SDK (1.x), Streamable HTTP | Tools of the Dynatrace MCP gateway |
+| Subprocess without shell, allowlist | Read-only `dtctl` tool |
+| Reading `SKILL.md` files | Skills loaded on demand |
+| `ast` (standard library) | Calculator tool: arithmetic expression parsed and evaluated without `eval` |
+| OpenLLMetry (`@agent`, `@task`, `@tool`) | One span per step and per tool |
 
-Un framework donnerait de la mémoire, des graphes d'états et des reprises sur erreur prêts à l'emploi, que l'atelier n'utilise pas. Le
-choix d'une boucle écrite à la main garde le code lisible en un seul fichier, permet aux participants d'y ajouter un outil (exercice F3) et
-fait de chaque étape et de chaque outil un span directement, sans couche intermédiaire.
+A framework would provide memory, state graphs and error recovery out of the box, which the workshop does not use. Choosing a
+hand-written loop keeps the code readable in a single file, lets participants add a tool to it (exercise F3) and
+turns each step and each tool directly into a span, without an intermediate layer.
 
-### Observabilité et évaluation
-| Technologie | Usage |
+### Observability and evaluation
+| Technology | Usage |
 |---|---|
-| OpenLLMetry (SDK Traceloop `traceloop-sdk`) | Instrumentation GenAI : décorateurs `@workflow`, `@task`, `@agent`, `@tool` et instrumentation Ollama |
-| OpenTelemetry (OTLP/HTTP) | Format et transport des traces et des métriques vers Dynatrace |
-| Dynatrace : traces distribuées, AI Observability, Grail et DQL | Visualisation, requêtes et tableaux de bord |
-| Dynatrace MCP (passerelle `mcp-gateway`) | Outils d'accès à la plateforme pour l'agent |
-| dtctl (Dynatrace CLI) | Outil en ligne de commande, en lecture seule, pour l'agent |
-| Skills Dynatrace (`dynatrace-for-ai`, fichiers `SKILL.md`) | Connaissance chargée à la demande par le sous-agent |
-| dt-evals (Node.js 20) | Évaluation par LLM juge des spans GenAI (OpenAI, Anthropic, Gemini/Vertex, Bedrock, Azure OpenAI) |
+| OpenLLMetry (Traceloop SDK `traceloop-sdk`) | GenAI instrumentation: `@workflow`, `@task`, `@agent`, `@tool` decorators and Ollama instrumentation |
+| OpenTelemetry (OTLP/HTTP) | Format and transport of traces and metrics to Dynatrace |
+| Dynatrace: distributed traces, AI Observability, Grail and DQL | Visualization, queries and dashboards |
+| Dynatrace MCP (`mcp-gateway` gateway) | Platform access tools for the agent |
+| dtctl (Dynatrace CLI) | Read-only command-line tool for the agent |
+| Dynatrace skills (`dynatrace-for-ai`, `SKILL.md` files) | Knowledge loaded on demand by the sub-agent |
+| dt-evals (Node.js 20) | LLM-judge evaluation of GenAI spans (OpenAI, Anthropic, Gemini/Vertex, Bedrock, Azure OpenAI) |
 
-### Interface web et outils de développement
-| Technologie | Usage |
+### Web interface and development tools
+| Technology | Usage |
 |---|---|
-| nginx (`nginx:alpine`) | Fichiers statiques et reverse proxy, streaming SSE |
-| HTML, CSS et JavaScript natifs | Pages de chat et d'agent, sans framework ni étape de compilation |
-| Server-Sent Events | Diffusion des jetons, des étapes de l'agent et des appels d'outils |
-| SVG, `localStorage`, `sessionStorage` | Drapeaux des langues, mémorisation des réglages et de la conversation |
-| code-server (VS Code dans le navigateur) | Poste de travail des participants |
-| Continue (extension VS Code) | Chat sur le modèle local, via Ollama |
-| Node.js 20, git | Pour dt-evals et pour récupérer les skills |
-| Mermaid | Schémas de ce document |
+| nginx (`nginx:alpine`) | Static files and reverse proxy, SSE streaming |
+| Native HTML, CSS and JavaScript | Chat and agent pages, without framework or build step |
+| Server-Sent Events | Streaming of tokens, agent steps and tool calls |
+| SVG, `localStorage`, `sessionStorage` | Language flags, saving of settings and of the conversation |
+| code-server (VS Code in the browser) | Participants' workstation |
+| Continue (VS Code extension) | Chat on the local model, via Ollama |
+| Node.js 20, git | For dt-evals and for fetching the skills |
+| Mermaid | Diagrams of this document |
 
-## 3. Déploiement
+## 3. Deployment
 
-| Élément | Rôle |
+| Element | Role |
 |---|---|
-| `azure-cli-deploy-vm-for-training-ai.sh` | Menu interactif (nombre de VM, mot de passe, OpenLLMetry, tenant, token, clé du juge), puis déploiement. |
-| `env.sh` | Valeurs par défaut (taille, régions, modèles, juge). Les choix du menu sont mémorisés dans `.lab-config`. |
-| `azuredeploy-ubuntu22.json` | Modèle ARM : VM, IP publique statique avec nom DNS, réseau virtuel, groupe de sécurité réseau (ports **22, 80, 8080**). |
-| `vm-setup.sh` | Exécuté en root sur la VM via `az vm run-command` : installe Docker, déploie la pile, attend les modèles et l'indexation. |
+| `azure-cli-deploy-vm-for-training-ai.sh` | Interactive menu (number of VMs, password, OpenLLMetry, tenant, token, judge key), then deployment. |
+| `env.sh` | Default values (size, regions, models, judge). The menu choices are saved in `.lab-config`. |
+| `azuredeploy-ubuntu22.json` | ARM template: VM, static public IP with DNS name, virtual network, network security group (ports **22, 80, 8080**). |
+| `vm-setup.sh` | Run as root on the VM via `az vm run-command`: installs Docker, deploys the stack, waits for the models and the indexing. |
 
-Déroulé : le script crée un groupe de ressources par VM (nom `<formation><NN>`, 5 VM par région pour respecter les quotas :
-francecentral, westeurope, northeurope, uksouth), déploie le modèle ARM, puis envoie à la VM un script autonome qui embarque
-`lab.env` (configuration), l'archive de `stack/` (encodée en base64, sans `.env` ni `__pycache__`) et `vm-setup.sh`. `vm-setup.sh`
-écrit `stack/.env`, lance `docker compose up -d --build` et attend `"ready": true` sur `/api/health`. Les VM sont ensuite libérées
-(deallocate) sauf si l'option « VM démarrée » est choisie ; la pile redémarre avec la VM.
+Flow: the script creates one resource group per VM (name `<training><NN>`, 5 VMs per region to respect the quotas:
+francecentral, westeurope, northeurope, uksouth), deploys the ARM template, then sends the VM a standalone script that embeds
+`lab.env` (configuration), the `stack/` archive (base64-encoded, without `.env` or `__pycache__`) and `vm-setup.sh`. `vm-setup.sh`
+writes `stack/.env`, runs `docker compose up -d --build` and waits for `"ready": true` on `/api/health`. The VMs are then released
+(deallocate) unless the "VM started" option is chosen; the stack restarts with the VM.
 
-Le numéro de VM (suffixe du nom d'hôte, par exemple `aitraining03`) sert à nommer les services Dynatrace : `ai-lab-rag-api-03`,
+The VM number (suffix of the host name, for example `aitraining03`) is used to name the Dynatrace services: `ai-lab-rag-api-03`,
 `ai-lab-agent-api-03`.
 
-## 4. Pile applicative d'une VM
+## 4. Application stack of a VM
 
-| Service | Image / source | Port (hôte) | Rôle | Montages notables |
+| Service | Image / source | Port (host) | Role | Notable mounts |
 |---|---|---|---|---|
-| `ollama` | `ollama/ollama` | interne | Sert `qwen2.5:7b` (génération, appels d'outils) et `nomic-embed-text` (embeddings). Modèles gardés 24 h en mémoire. | volume `ollama_data` |
-| `ollama-init` | `ollama/ollama` | — | Tâche unique : télécharge les deux modèles. | — |
-| `chroma` | `chromadb/chroma:0.6.3` | interne | Base vectorielle persistante des passages de documents. | volume `chroma_data` |
-| `rag-api` | `stack/rag-api` | interne | API du chat : indexation, recherche, prompt, streaming SSE. | `./docs` (lecture seule) |
-| `agent-api` | même image que `rag-api` (commande `app.agent_main`) | interne | API de l'agent : boucle d'outils, sous-agent Dynatrace, MCP, dtctl, skills. | `./docs`, `./mcp`, `./skills` (lecture seule) |
-| `web` | `nginx:alpine` | **80** | Sert les pages statiques et relaie les API. | `./web`, `nginx.conf` (lecture seule) |
-| `vscode` | `stack/vscode` (code-server) | **8080** | VS Code web, chat Continue sur le modèle local, dtctl, Node.js, dt-evals, git. | `./` monté sur `/workspace` (lecture et écriture) |
+| `ollama` | `ollama/ollama` | internal | Serves `qwen2.5:7b` (generation, tool calls) and `nomic-embed-text` (embeddings). Models kept in memory for 24 h. | volume `ollama_data` |
+| `ollama-init` | `ollama/ollama` | — | One-shot task: downloads the two models. | — |
+| `chroma` | `chromadb/chroma:0.6.3` | internal | Persistent vector database of the document passages. | volume `chroma_data` |
+| `rag-api` | `stack/rag-api` | internal | Chat API: indexing, search, prompt, SSE streaming. | `./docs` (read-only) |
+| `agent-api` | same image as `rag-api` (command `app.agent_main`) | internal | Agent API: tool loop, Dynatrace sub-agent, MCP, dtctl, skills. | `./docs`, `./mcp`, `./skills` (read-only) |
+| `web` | `nginx:alpine` | **80** | Serves the static pages and relays the APIs. | `./web`, `nginx.conf` (read-only) |
+| `vscode` | `stack/vscode` (code-server) | **8080** | Web VS Code, Continue chat on the local model, dtctl, Node.js, dt-evals, git. | `./` mounted on `/workspace` (read and write) |
 
-Réseau : tous les conteneurs partagent le réseau Compose par défaut ; seuls `web` (80) et `vscode` (8080) sont publiés. `nginx`
-relaie `/api/` vers `rag-api:8000` et `/agent/api/` vers `agent-api:8000` (réécrit en `/api/`), avec le tamponnage désactivé pour le
-streaming SSE et de longs délais (900 s et 1800 s) car l'inférence CPU est lente.
+Network: all containers share the default Compose network; only `web` (80) and `vscode` (8080) are published. `nginx`
+relays `/api/` to `rag-api:8000` and `/agent/api/` to `agent-api:8000` (rewritten as `/api/`), with buffering disabled for
+SSE streaming and long timeouts (900 s and 1800 s) because CPU inference is slow.
 
-Dossiers partagés (tout `stack/` est visible dans VS Code sous `/workspace`) :
-`docs` (base de connaissances du chat), `mcp` (`mcp.json` et `dtctl-config` créés par les participants), `skills` (skills Dynatrace
-choisies par les participants), `evals` (configuration de dt-evals), `exercices` (catalogue), `scripts` (activation d'OpenLLMetry, trafic).
+Shared folders (all of `stack/` is visible in VS Code under `/workspace`):
+`docs` (the chat's knowledge base), `mcp` (`mcp.json` and `dtctl-config` created by the participants), `skills` (Dynatrace skills
+chosen by the participants), `evals` (dt-evals configuration), `exercices` (catalog), `scripts` (OpenLLMetry activation, traffic).
 
-## 5. Flux de requêtes
+## 5. Request flows
 
-### 5.1 Chat RAG
+### 5.1 RAG chat
 
 ```mermaid
 sequenceDiagram
-  participant B as Navigateur
+  participant B as Browser
   participant N as nginx
   participant R as rag-api
   participant C as ChromaDB
   participant O as Ollama
-  B->>N: POST /api/chat (question, historique, réglages)
-  N->>R: relais (SSE)
-  R->>O: embedding de la question
-  R->>C: recherche des passages
+  B->>N: POST /api/chat (question, history, settings)
+  N->>R: relay (SSE)
+  R->>O: question embedding
+  R->>C: passage search
   R-->>B: event sources
-  R->>O: chat en streaming (question, message système, passages, historique)
-  O-->>R: jetons
-  R-->>B: events token, puis done
+  R->>O: streaming chat (question, system message, passages, history)
+  O-->>R: tokens
+  R-->>B: events token, then done
 ```
 
-`rag.build_messages` construit, dans cet ordre : la **question seule**, le **message système**, un message `user` avec les **passages RAG**
-(préfixe `Passages de documents :`), un message `user` avec l'**historique** (préfixe `Échanges précédents :`). Cet ordre et ces préfixes
-servent à l'observabilité (section 6.3). Ollama regroupe les messages `system` quelle que soit leur position.
+`rag.build_messages` builds, in this order: the **question alone**, the **system message**, a `user` message with the **RAG passages**
+(prefix `Passages de documents :`), a `user` message with the **history** (prefix `Échanges précédents :`). This order and these prefixes
+are used for observability (section 6.3). Ollama groups the `system` messages regardless of their position.
 
 ### 5.2 Agent
 
-L'agent est une boucle écrite à la main, sans framework d'agent (voir section 2). `agent-api` exécute une boucle (`agent.py`, fonction `loop`) : un appel au modèle avec les outils, exécution des appels d'outils demandés,
-ajout des résultats, nouvel appel, jusqu'à une réponse sans outil ou jusqu'au nombre d'étapes maximal (la dernière étape n'a pas d'outils,
-le modèle doit répondre). Les événements SSE portent un label `agent` (`main` ou `dynatrace`).
+The agent is a hand-written loop, without an agent framework (see section 2). `agent-api` runs a loop (`agent.py`, function `loop`): a call to the model with the tools, execution of the requested tool calls,
+adding the results, new call, until an answer without tools or until the maximum number of steps (the last step has no tools,
+the model must answer). The SSE events carry an `agent` label (`main` or `dynatrace`).
 
-- **Outils locaux** : `search_documents` et `list_documents` (même base ChromaDB que le chat), `calculator` (évaluation arithmétique
-  sécurisée par analyse syntaxique), `get_current_time`.
-- **Sous-agent Dynatrace** : si un accès Dynatrace existe (serveur MCP déclaré, ou dtctl configuré), l'agent principal ne reçoit qu'un
-  outil, `ask_dynatrace(question)`. Il délègue à un sous-agent avec sa propre instruction, son propre contexte (même taille de fenêtre),
-  4 étapes au plus (`DT_AGENT_MAX_STEPS`) et seulement les outils Dynatrace : outils MCP, `dtctl`, `list_skills`/`read_skill`. Le
-  sous-agent rend un résumé court. `MCP_SUBAGENT=false` donne ces outils directement à l'agent principal.
-- **Contexte** : fenêtre de 8192 jetons (`AGENT_NUM_CTX`). Une alerte SSE `warning` est émise si Ollama coupe la génération
-  (`done_reason=length`) ou si le prompt dépasse 90 % de la fenêtre.
+- **Local tools**: `search_documents` and `list_documents` (same ChromaDB database as the chat), `calculator` (safe arithmetic evaluation
+  by syntax parsing), `get_current_time`.
+- **Dynatrace sub-agent**: if Dynatrace access exists (MCP server declared, or dtctl configured), the main agent only receives one
+  tool, `ask_dynatrace(question)`. It delegates to a sub-agent with its own instruction, its own context (same window size),
+  4 steps at most (`DT_AGENT_MAX_STEPS`) and only the Dynatrace tools: MCP tools, `dtctl`, `list_skills`/`read_skill`. The
+  sub-agent returns a short summary. `MCP_SUBAGENT=false` gives these tools directly to the main agent.
+- **Context**: window of 8192 tokens (`AGENT_NUM_CTX`). An SSE `warning` alert is emitted if Ollama truncates the generation
+  (`done_reason=length`) or if the prompt exceeds 90% of the window.
 
-### 5.3 Briques d'accès à Dynatrace (côté agent)
+### 5.3 Dynatrace access building blocks (agent side)
 
-| Brique | Fichier | Fonctionnement |
+| Building block | File | How it works |
 |---|---|---|
-| MCP | `mcp_tools.py` | Lit `/workspace/mcp/mcp.json` (format `servers` ou `mcpServers`), relu quand le fichier change ou après 60 s. Serveurs **distants** en HTTP (SDK `mcp` 1.x). Découverte des outils puis une session courte par appel d'outil. Liste d'outils autorisés facultative (`"tools"`), `${VAR}` remplacé par l'environnement. Un serveur en panne n'affecte pas les autres ; les erreurs 401/403 sont expliquées. |
-| dtctl | `dtctl_tool.py` | Binaire installé dans l'image. Outil `dtctl(command)` exécuté sans shell, en mode `--agent` avec sortie bornée. **Liste blanche** : `query`, `get`, `describe`, `logs`, `inventory`, `commands`, `inspect`, `doctor`, `version`, `exec copilot nl2dql\|dql2nl`. Options bloquées : `--config`, `--context`, `--token`, `--environment`, `-f/--file`, `--watch`… Configuration lue dans `DTCTL_CONFIG`. |
-| Skills | `skills.py` | Détecte les `SKILL.md` sous `/workspace/skills` (4 niveaux). Le sous-agent voit la liste courte (nom, description) dans son instruction et lit une skill à la demande avec `read_skill` (tronquée à `SKILL_MAX_CHARS`, références lisibles à part, sorties de dossier refusées). |
+| MCP | `mcp_tools.py` | Reads `/workspace/mcp/mcp.json` (`servers` or `mcpServers` format), reread when the file changes or after 60 s. **Remote** servers over HTTP (`mcp` SDK 1.x). Tool discovery then one short session per tool call. Optional allowed-tools list (`"tools"`), `${VAR}` replaced by the environment. A failing server does not affect the others; 401/403 errors are explained. |
+| dtctl | `dtctl_tool.py` | Binary installed in the image. `dtctl(command)` tool run without a shell, in `--agent` mode with bounded output. **Allowlist**: `query`, `get`, `describe`, `logs`, `inventory`, `commands`, `inspect`, `doctor`, `version`, `exec copilot nl2dql\|dql2nl`. Blocked options: `--config`, `--context`, `--token`, `--environment`, `-f/--file`, `--watch`… Configuration read from `DTCTL_CONFIG`. |
+| Skills | `skills.py` | Detects the `SKILL.md` files under `/workspace/skills` (4 levels). The sub-agent sees the short list (name, description) in its instruction and reads a skill on demand with `read_skill` (truncated to `SKILL_MAX_CHARS`, references readable separately, folder escapes refused). |
 
-Toutes les sorties d'outils sont tronquées (3000 caractères) pour protéger le contexte.
+All tool outputs are truncated (3000 characters) to protect the context.
 
-## 6. Observabilité
+## 6. Observability
 
-### 6.1 Principe
+### 6.1 Principle
 
-Le SDK Traceloop (OpenLLMetry) est initialisé **avant** l'import d'`ollama` et `chromadb` (`telemetry.py`, fonction `init_telemetry`),
-conformément à la documentation Dynatrace : `Traceloop.init` vers `https://<tenant>/api/v2/otlp`, `disable_batch=True`, temporalité des
-métriques `delta`. Seule l'instrumentation **Ollama** est active (ChromaDB et HTTP sont exclus). L'en-tête d'authentification est
-`Api-Token` pour un token classique (`dt0c01.*`), `Bearer` sinon. Sans `OPENLLMETRY_ENABLED=true` (ou tenant ou token absent), aucune
-télémétrie n'est émise et les décorateurs ne font rien.
+The Traceloop SDK (OpenLLMetry) is initialized **before** `ollama` and `chromadb` are imported (`telemetry.py`, function `init_telemetry`),
+following the Dynatrace documentation: `Traceloop.init` to `https://<tenant>/api/v2/otlp`, `disable_batch=True`, `delta` metrics
+temporality. Only the **Ollama** instrumentation is active (ChromaDB and HTTP are excluded). The authentication header is
+`Api-Token` for a classic token (`dt0c01.*`), `Bearer` otherwise. Without `OPENLLMETRY_ENABLED=true` (or with a missing tenant or token), no
+telemetry is emitted and the decorators do nothing.
 
-### 6.2 Structure des traces
+### 6.2 Trace structure
 
 ```
 Chat   (service ai-lab-rag-api-NN)
-  rag.chat                      @workflow   entrée : la question, sortie : la réponse
-  ├─ rag.retrieve               @task       (appel d'embedding Ollama dedans)
-  └─ rag.generate               @task       (appel de chat Ollama dedans)
+  rag.chat                      @workflow   input: the question, output: the response
+  ├─ rag.retrieve               @task       (Ollama embedding call inside)
+  └─ rag.generate               @task       (Ollama chat call inside)
 
 Agent  (service ai-lab-agent-api-NN)
-  agent.run                     @agent      entrée : la tâche, sortie : la réponse finale
-  ├─ agent.step                 @task       un appel au modèle (span LLM dedans)
-  ├─ <outil local>              @tool       calculator, search_documents, ...
-  └─ ask_dynatrace              @tool       délégation au sous-agent
+  agent.run                     @agent      input: the task, output: the final response
+  ├─ agent.step                 @task       one model call (LLM span inside)
+  ├─ <local tool>               @tool       calculator, search_documents, ...
+  └─ ask_dynatrace              @tool       delegation to the sub-agent
      └─ dynatrace_agent         @agent
-        ├─ agent.step           @task       (span LLM dedans)
-        └─ <outil MCP | dtctl | read_skill>  @tool
+        ├─ agent.step           @task       (LLM span inside)
+        └─ <MCP tool | dtctl | read_skill>  @tool
 ```
 
-Les spans « appel au modèle » viennent de l'instrumentation Ollama (modèle, réglages, jetons d'entrée, de sortie et total, streaming,
-prompt et réponse). Les fonctions décorées sont des fonctions `async` simples, non des générateurs, avec des arguments minimaux : les
-événements SSE destinés au navigateur circulent par une `asyncio.Queue`, et chaque requête s'exécute dans sa propre tâche pour éviter
-les fuites de contexte de trace.
+The "model call" spans come from the Ollama instrumentation (model, settings, input, output and total tokens, streaming,
+prompt and response). The decorated functions are plain `async` functions, not generators, with minimal arguments: the SSE
+events intended for the browser flow through an `asyncio.Queue`, and each request runs in its own task to avoid
+trace context leaks.
 
-### 6.3 Ce qui est exporté du prompt
+### 6.3 What is exported from the prompt
 
-Un callback `span_postprocess_callback` (`_strip_history`) retire du span LLM, juste avant l'export, les messages commençant par les
-préfixes `Échanges précédents :` (historique, toujours) et `Passages de documents :` (RAG, sauf si `OPENLLMETRY_KEEP_RAG=true`). Il gère
-les deux formes d'attributs de l'instrumentation (`gen_ai.prompt.N.*` et `gen_ai.input.messages`). Les compteurs de jetons ne sont pas
-modifiés. C'est le seul écart avec une configuration OpenLLMetry standard ; il modifie un attribut privé d'OpenTelemetry que le SDK
-déverrouille explicitement pour ce cas. `OPENLLMETRY_TRACE_CONTENT=false` supprime tout le texte des prompts et des réponses.
+A `span_postprocess_callback` (`_strip_history`) removes from the LLM span, just before export, the messages starting with the
+prefixes `Échanges précédents :` (history, always) and `Passages de documents :` (RAG, unless `OPENLLMETRY_KEEP_RAG=true`). It handles
+both forms of instrumentation attributes (`gen_ai.prompt.N.*` and `gen_ai.input.messages`). The token counters are not
+modified. This is the only deviation from a standard OpenLLMetry configuration; it modifies a private OpenTelemetry attribute that the SDK
+explicitly unlocks for this case. `OPENLLMETRY_TRACE_CONTENT=false` removes all the prompt and response text.
 
-### 6.4 Activation et évaluation
+### 6.4 Activation and evaluation
 
-| Besoin | Mécanisme |
+| Need | Mechanism |
 |---|---|
-| Activer le chat | `scripts/set-openllmetry.sh on <tenant> <token>` (ou option au déploiement) |
-| Activer l'agent seul | `scripts/set-agent-openllmetry.sh on <tenant> <token>` (sinon l'agent suit l'option du chat) |
-| Garder les passages RAG | `scripts/set-rag-context.sh on` |
-| Juger les réponses | `dt-evals` dans le terminal VS Code : lit les spans du service, appelle un LLM juge externe (clé partagée), écrit des bizevents `gen_ai.evaluation.result` visibles dans AI Observability > Evaluations |
+| Enable the chat | `scripts/set-openllmetry.sh on <tenant> <token>` (or option at deployment) |
+| Enable the agent alone | `scripts/set-agent-openllmetry.sh on <tenant> <token>` (otherwise the agent follows the chat's option) |
+| Keep the RAG passages | `scripts/set-rag-context.sh on` |
+| Judge the responses | `dt-evals` in the VS Code terminal: reads the service's spans, calls an external judge LLM (shared key), writes `gen_ai.evaluation.result` bizevents visible in AI Observability > Evaluations |
 
-Le LLM juge n'est jamais le modèle local : dt-evals ne documente que OpenAI, Anthropic, Gemini/Vertex, Bedrock et Azure OpenAI.
+The judge LLM is never the local model: dt-evals only documents OpenAI, Anthropic, Gemini/Vertex, Bedrock and Azure OpenAI.
 
-## 7. Interface web
+## 7. Web interface
 
-Pages statiques servies par nginx, sans framework :
+Static pages served by nginx, without a framework:
 
-| Fichier | Rôle |
+| File | Role |
 |---|---|
-| `index.html` | Chat : réglages, documents, passages cités, onglet Observability (code de `telemetry.py`). Contient son propre JavaScript et ses textes. |
-| `agent.html` | Agent : étapes, cartes d'outils, sous-agent imbriqué dans la carte `ask_dynatrace`, onglets Paramètres, Outils (état MCP, dtctl, skills) et Observability. |
-| `common.css` | Styles partagés par les deux pages (thème clair/sombre, sélecteur de langue, navigation). |
-| `common.js` | Utilitaires de la page agent : drapeaux, sélecteur de langue, rendu markdown minimal, fabrique de traductions. |
+| `index.html` | Chat: settings, documents, cited passages, Observability tab (code from `telemetry.py`). Contains its own JavaScript and texts. |
+| `agent.html` | Agent: steps, tool cards, sub-agent nested in the `ask_dynatrace` card, Settings, Tools (MCP, dtctl, skills state) and Observability tabs. |
+| `common.css` | Styles shared by both pages (light/dark theme, language selector, navigation). |
+| `common.js` | Agent page utilities: flags, language selector, minimal markdown rendering, translation factory. |
 
-Fonctionnement :
-- **Langues** : français, anglais, espagnol, allemand, italien, avec drapeaux en SVG. Le choix est mémorisé (`localStorage`, clé
-  commune aux deux pages). Les messages système par défaut sont fournis par le serveur dans les cinq langues et suivent la langue tant
-  que le participant ne les a pas modifiés.
-- **Conservation de la conversation** : chaque page enregistre ses échanges dans `sessionStorage` (30 pour le chat, 20 pour l'agent) et les
-  réaffiche au retour. La page agent rejoue les événements enregistrés avec le même code que l'affichage en direct.
-- **Protocole SSE du chat** : `sources`, `token`, `done` (jetons, débit, durée), `error`.
-- **Protocole SSE de l'agent** : `step`, `token`, `tool_call`, `tool_result`, `warning`, `done`, `error`, chacun avec le champ `agent`.
-- **Statuts** : pastilles modèle, documents ou outils, OpenLLMetry et dtctl, rafraîchies toutes les 5 secondes via `/api/health`.
-- L'onglet Observability masque l'interface de chat (la règle CSS `.chat[hidden]` est nécessaire car `.chat` est en `display: flex`).
+How it works:
+- **Languages**: French, English, Spanish, German, Italian, with SVG flags. The choice is saved (`localStorage`, key
+  shared by both pages). The default system messages are provided by the server in the five languages and follow the language as long
+  as the participant has not modified them.
+- **Conversation persistence**: each page saves its exchanges in `sessionStorage` (30 for the chat, 20 for the agent) and
+  redisplays them on return. The agent page replays the saved events with the same code as the live display.
+- **Chat SSE protocol**: `sources`, `token`, `done` (tokens, throughput, duration), `error`.
+- **Agent SSE protocol**: `step`, `token`, `tool_call`, `tool_result`, `warning`, `done`, `error`, each with the `agent` field.
+- **Statuses**: Model, Documents or Tools, OpenLLMetry and dtctl chips, refreshed every 5 seconds via `/api/health`.
+- The Observability tab hides the chat interface (the `.chat[hidden]` CSS rule is needed because `.chat` is `display: flex`).
 
-## 8. Configuration : où régler quoi
+## 8. Configuration: where to set what
 
-| Variable | Service | Effet |
+| Variable | Service | Effect |
 |---|---|---|
-| `OPENLLMETRY_ENABLED`, `AGENT_OPENLLMETRY_ENABLED` | chat, agent | active OpenLLMetry (l'agent suit le chat par défaut) |
-| `DT_TENANT`, `DT_API_TOKEN` | chat, agent | endpoint OTLP et token d'ingestion |
-| `OTEL_SERVICE_NAME`, `AGENT_OTEL_SERVICE_NAME` | chat, agent | nom de base du service (le numéro de VM est ajouté) |
-| `OPENLLMETRY_TRACE_CONTENT` | chat, agent | texte des prompts et réponses dans les traces |
-| `OPENLLMETRY_KEEP_RAG` | chat, agent | garde les passages RAG dans les traces |
-| `LLM_MODEL`, `EMBED_MODEL` | tous | modèles Ollama |
-| `AGENT_NUM_CTX` | agent | fenêtre de contexte (8192 par défaut) |
-| `MCP_SUBAGENT`, `DT_AGENT_MAX_STEPS` | agent | sous-agent Dynatrace et son nombre d'étapes |
-| `MCP_CONFIG`, `DTCTL_CONFIG`, `DTCTL_CONTEXT`, `SKILLS_DIR`, `SKILL_MAX_CHARS` | agent | emplacement des fichiers des participants |
-| `VSCODE_PASSWORD` | vscode | mot de passe de VS Code web (celui de la VM) |
-| `JUDGE_PROVIDER`, `JUDGE_MODEL`, `JUDGE_API_KEY` | vscode | juge de dt-evals (la clé est exposée sous le nom attendu par le fournisseur) |
+| `OPENLLMETRY_ENABLED`, `AGENT_OPENLLMETRY_ENABLED` | chat, agent | enables OpenLLMetry (the agent follows the chat by default) |
+| `DT_TENANT`, `DT_API_TOKEN` | chat, agent | OTLP endpoint and ingestion token |
+| `OTEL_SERVICE_NAME`, `AGENT_OTEL_SERVICE_NAME` | chat, agent | base service name (the VM number is appended) |
+| `OPENLLMETRY_TRACE_CONTENT` | chat, agent | text of prompts and responses in the traces |
+| `OPENLLMETRY_KEEP_RAG` | chat, agent | keeps the RAG passages in the traces |
+| `LLM_MODEL`, `EMBED_MODEL` | all | Ollama models |
+| `AGENT_NUM_CTX` | agent | context window (8192 by default) |
+| `MCP_SUBAGENT`, `DT_AGENT_MAX_STEPS` | agent | Dynatrace sub-agent and its number of steps |
+| `MCP_CONFIG`, `DTCTL_CONFIG`, `DTCTL_CONTEXT`, `SKILLS_DIR`, `SKILL_MAX_CHARS` | agent | location of the participants' files |
+| `DOCS_LANG` | chat | language of the knowledge-base documents: `en` (default, `*.md` files) or `fr` (`*.fr.md` files) |
+| `VSCODE_PASSWORD` | vscode | web VS Code password (the VM's) |
+| `JUDGE_PROVIDER`, `JUDGE_MODEL`, `JUDGE_API_KEY` | vscode | dt-evals judge (the key is exposed under the name expected by the provider) |
 
-Les valeurs vont dans `stack/.env` (écrit par `vm-setup.sh`, mode 600) ; `stack/.env.example` en donne un exemple.
+The values go in `stack/.env` (written by `vm-setup.sh`, mode 600); `stack/.env.example` gives an example.
 
-## 9. Sécurité et limites connues
+## 9. Security and known limitations
 
-- **Ports** : 22, 80 et 8080 ouverts, en HTTP simple (le mot de passe VS Code et les conversations circulent en clair).
-- **Secrets** : le token d'ingestion est dans `.env` ; `mcp.json` et `dtctl-config` (créés par les participants) peuvent contenir des tokens,
-  ils sont ignorés par git ; la clé du juge est visible dans le terminal des participants (à plafonner et révoquer).
-- **VS Code** : le conteneur tourne en root avec tout `stack/` en écriture ; quiconque a le mot de passe contrôle ce dossier.
-- **dtctl** : le niveau `readonly` est appliqué côté client seulement ; la protection réelle est un token à droits de lecture minimaux.
-  L'agent ajoute sa propre liste blanche de commandes.
-- **MCP** : l'accès se limite aux outils déclarés dans `mcp.json` (liste facultative) et aux droits du token.
-- **Modèle** : un modèle de 7 milliards de paramètres sur CPU est lent (réponses en secondes à minutes) et choisit moins bien ses outils
-  quand ils sont nombreux ; d'où le sous-agent, la liste d'outils autorisés et la fenêtre de contexte élargie.
-- **Évaluation** : le contenu des traces évaluées part chez le fournisseur du juge (dt-evals masque d'abord e-mails, téléphones, cartes,
-  numéros de sécurité sociale).
-- **Indexation** : les documents ne sont indexés qu'au premier démarrage ; après modification de `docs/`, utiliser « Réindexer les exemples ».
+- **Ports**: 22, 80 and 8080 open, over plain HTTP (the VS Code password and the conversations travel in clear text).
+- **Secrets**: the ingestion token is in `.env`; `mcp.json` and `dtctl-config` (created by the participants) may contain tokens,
+  they are ignored by git; the judge key is visible in the participants' terminal (to be capped and revoked).
+- **VS Code**: the container runs as root with all of `stack/` writable; anyone with the password controls this folder.
+- **dtctl**: the `readonly` level is enforced client-side only; the real protection is a token with minimal read permissions.
+  The agent adds its own command allowlist.
+- **MCP**: access is limited to the tools declared in `mcp.json` (optional list) and to the token's permissions.
+- **Model**: a 7-billion-parameter model on CPU is slow (responses in seconds to minutes) and selects its tools less well
+  when there are many; hence the sub-agent, the allowed-tools list and the enlarged context window.
+- **Evaluation**: the content of the evaluated traces goes to the judge's provider (dt-evals first masks emails, phone numbers, cards,
+  social security numbers).
+- **Indexing**: documents are only indexed on the first start; after modifying `docs/`, use "Reindex the samples".
 
-## 10. Choix de conception
+## 10. Design choices
 
-| Choix | Raison |
+| Choice | Reason |
 |---|---|
-| Une VM par participant | Isolation, mesures de performance indépendantes, services Dynatrace par participant. |
-| Même image pour `rag-api` et `agent-api` | Partage de `rag.py`, `telemetry.py`, des dépendances ; deux services pour deux noms de service OpenLLMetry. |
-| Question d'abord, contexte ensuite | Dynatrace affiche le premier message d'entrée : la question doit être lisible, sans historique ni passages. |
-| Callback de masquage plutôt que traçage manuel | Reste dans OpenLLMetry ; le span LLM reste produit par le SDK. |
-| Fonctions simples + file d'attente pour le streaming | Les spans commencent et finissent proprement ; pas de fuite de contexte entre `yield`. |
-| Boucle d'agent écrite à la main, sans framework | Code lisible en un fichier, outil ajoutable par les participants, chaque étape et chaque outil devient un span sans couche intermédiaire. Limites assumées : pas de mémoire longue (6 derniers messages), pas de planification explicite, choix des outils laissé au modèle. |
-| Sous-agent Dynatrace | Isole les schémas et résultats volumineux, réduit le nombre d'outils vus par le modèle principal, bonne démonstration multi-agents. |
-| Configuration par fichiers des participants (`mcp.json`, `dtctl-config`, skills) | Ce sont les exercices : les participants créent eux-mêmes les intégrations, avec rechargement automatique. |
-| Pages sans framework | Aucun outil de build, fichiers montés en lecture seule, modifiables sur la VM. |
+| One VM per participant | Isolation, independent performance measurements, Dynatrace services per participant. |
+| Same image for `rag-api` and `agent-api` | Sharing of `rag.py`, `telemetry.py`, dependencies; two services for two OpenLLMetry service names. |
+| Question first, context afterwards | Dynatrace displays the first input message: the question must be readable, without history or passages. |
+| Masking callback rather than manual tracing | Stays within OpenLLMetry; the LLM span is still produced by the SDK. |
+| Plain functions + queue for streaming | Spans start and end cleanly; no context leak across `yield`. |
+| Hand-written agent loop, no framework | Code readable in one file, tool addable by the participants, each step and each tool becomes a span without an intermediate layer. Accepted limitations: no long-term memory (last 6 messages), no explicit planning, tool selection left to the model. |
+| Dynatrace sub-agent | Isolates large schemas and results, reduces the number of tools seen by the main model, good multi-agent demonstration. |
+| Configuration through participant files (`mcp.json`, `dtctl-config`, skills) | These are the exercises: participants create the integrations themselves, with automatic reload. |
+| Pages without a framework | No build tool, files mounted read-only, editable on the VM. |
 
-## 11. Plan des fichiers
+## 11. File layout
 
 ```
-azure-cli-deploy-vm-for-training-ai.sh   déploiement (menu, ARM, run-command)
-azuredeploy-ubuntu22.json                modèle ARM
-env.sh  vm-setup.sh                      valeurs par défaut, installation sur la VM
-ARCHITECTURE.md  README.md               ce document, présentation
+azure-cli-deploy-vm-for-training-ai.sh   deployment (menu, ARM, run-command)
+azuredeploy-ubuntu22.json                ARM template
+env.sh  vm-setup.sh                      default values, installation on the VM
+ARCHITECTURE.md  README.md               this document, overview
 stack/
   docker-compose.yml  nginx.conf  .env.example
-  rag-api/                               image Python partagée par le chat et l'agent
-    app/main.py  rag.py                  chat RAG
-    app/agent.py  agent_main.py          agent, boucle, sous-agent, API de l'agent
-    app/mcp_tools.py  dtctl_tool.py  skills.py   outils Dynatrace
-    app/telemetry.py                     OpenLLMetry, décorateurs, callback de masquage
+  rag-api/                               Python image shared by the chat and the agent
+    app/main.py  rag.py                  RAG chat
+    app/agent.py  agent_main.py          agent, loop, sub-agent, agent API
+    app/mcp_tools.py  dtctl_tool.py  skills.py   Dynatrace tools
+    app/telemetry.py                     OpenLLMetry, decorators, masking callback
   vscode/                                code-server, entrypoint (Continue, dt-evals)
   web/  index.html agent.html common.css common.js
-  docs/                                  base de connaissances du chat (indexée)
-  mcp/  skills/  evals/                  espaces de travail des participants
-  exercices/                             catalogue des exercices
-  scripts/                               OpenLLMetry (chat, agent), contexte RAG, trafic
+  docs/                                  chat knowledge base (indexed)
+  mcp/  skills/  evals/                  participants' workspaces
+  exercices/                             exercise catalog
+  scripts/                               OpenLLMetry (chat, agent), RAG context, traffic
 ```
