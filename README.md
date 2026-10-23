@@ -39,7 +39,7 @@ In the Cloud Shell, replace `<your-account>` with the GitHub account that hosts 
 
 ```
 cd;if [ -d "./lab-environment-for-ai-training" ];then rm -rf ./lab-environment-for-ai-training;fi
-git clone https://github.com/<your-account>/lab-environment-for-ai-training.git
+git clone https://github.com/antoinebuffotot/lab-environment-for-ai-training.git
 cd lab-environment-for-ai-training;chmod +x ./*.sh
 ./azure-cli-deploy-vm-for-training-ai.sh
 ```
