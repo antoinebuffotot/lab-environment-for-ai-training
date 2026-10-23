@@ -25,7 +25,7 @@ import time
 log = logging.getLogger("mcp")
 
 MCP_FILE = os.getenv("MCP_CONFIG", "/workspace/mcp/mcp.json")
-MAX_RESULT_CHARS = 3000
+from app.limits import clip, compact
 CACHE_SECONDS = 60
 
 _cache = {"key": None, "at": 0.0, "tools": [], "status": {"configured": False, "servers": [], "error": ""}}
@@ -187,7 +187,7 @@ async def call(name: str, arguments: dict) -> str:
     for item in result.content or []:
         text = getattr(item, "text", None)
         parts.append(text if text is not None else f"[{getattr(item, 'type', 'contenu')}]")
-    out = "\n".join(parts) or "(résultat vide)"
+    out = compact("\n".join(parts)) or "(résultat vide)"
     if getattr(result, "isError", False):
         out = "Erreur de l'outil : " + out
-    return out[:MAX_RESULT_CHARS]
+    return clip(out)

@@ -15,13 +15,14 @@ import os
 import shlex
 import shutil
 
+from app.limits import clip, compact
+
 log = logging.getLogger("dtctl")
 
 DTCTL_BIN = os.getenv("DTCTL_BIN", "dtctl")
 DTCTL_CONFIG = os.getenv("DTCTL_CONFIG", "/workspace/mcp/dtctl-config")
 TIMEOUT_S = int(os.getenv("DTCTL_TIMEOUT", "60"))
 MAX_OUTPUT_TOKENS = os.getenv("DTCTL_MAX_OUTPUT_TOKENS", "1200")
-MAX_RESULT_CHARS = 3000
 
 READ_VERBS = {"query", "get", "describe", "logs", "inventory", "commands", "inspect", "doctor", "version"}
 COPILOT_ACTIONS = {"nl2dql", "dql2nl"}
@@ -126,4 +127,4 @@ async def run(command: str) -> str:
             out, err, code = await _exec(args, ["--agent"])
     except OSError as exc:
         return f"Erreur : impossible de lancer dtctl ({exc})."
-    return _format(out, err, code)[:MAX_RESULT_CHARS]
+    return clip(compact(_format(out, err, code)))

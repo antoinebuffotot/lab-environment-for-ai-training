@@ -23,6 +23,7 @@ from datetime import datetime, timezone
 
 from app import dtctl_tool, mcp_tools, rag, skills
 from app.rag import field
+from app.limits import clip
 from app.telemetry import HISTORY_PREFIX, agent, task, tool
 
 log = logging.getLogger("agent")
@@ -83,7 +84,6 @@ AGENT_SYSTEM_PROMPT = AGENT_SYSTEM_PROMPTS["fr"]
 NUM_CTX = int(os.getenv("AGENT_NUM_CTX", "8192"))
 
 DEFAULT_AGENT_PARAMS = {"temperature": 0.2, "top_k": 40, "top_p": 0.9, "max_steps": 5}
-MAX_RESULT_CHARS = 3000
 
 TOOLS = [
     {"type": "function", "function": {
@@ -212,7 +212,7 @@ async def run_tool(name: str, args: dict) -> str:
     except Exception as exc:
         log.exception("tool %s failed", name)
         return f"Erreur pendant l'exécution de l'outil : {exc}"
-    return str(result)[:MAX_RESULT_CHARS]
+    return clip(str(result))
 
 
 # --------------------------------------------------------------------------- messages
@@ -267,7 +267,10 @@ DT_BASE_PROMPT = (
     "from natural language, use it first, then execute the query; always limit the volume (for example "
     "'| limit 20', few fields, a short time range); make as few calls as possible. Your final answer is a concise "
     "factual summary (150 words at most) in the language of the question, with the key figures, entity names, "
-    "ids and the time range. If a tool fails or returns nothing, say so plainly instead of guessing."
+    "ids and the time range. When a tool returns several items (problems, entities, log lines...), list EVERY item "
+    "returned (id and title), up to 15, before summarizing: never keep only the first. If the result says it was "
+    "truncated, say that the list may be incomplete. If a tool fails or returns nothing, say so plainly instead "
+    "of guessing."
 )
 
 
@@ -361,7 +364,7 @@ def agent_turn(req, queue: asyncio.Queue, sse):
             return await loop(messages, dynatrace_tool_schemas(), DT_MAX_STEPS, "dynatrace", run_tool)
 
         answer = await dynatrace_agent(question)
-        return (answer or "Le sous-agent Dynatrace n'a pas produit de réponse.")[:MAX_RESULT_CHARS]
+        return clip(answer or "Le sous-agent Dynatrace n'a pas produit de réponse.")
 
     async def main_tool(name: str, args: dict) -> str:
         if name == "ask_dynatrace":

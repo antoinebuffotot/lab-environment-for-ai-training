@@ -208,7 +208,7 @@ le modèle doit répondre). Les événements SSE portent un label `agent` (`main
 | dtctl | `dtctl_tool.py` | Binaire installé dans l'image. Outil `dtctl(command)` exécuté sans shell, en mode `--agent` avec sortie bornée. **Liste blanche** : `query`, `get`, `describe`, `logs`, `inventory`, `commands`, `inspect`, `doctor`, `version`, `exec copilot nl2dql\|dql2nl`. Options bloquées : `--config`, `--context`, `--token`, `--environment`, `-f/--file`, `--watch`… Configuration lue dans `DTCTL_CONFIG`. |
 | Skills | `skills.py` | Détecte les `SKILL.md` sous `/workspace/skills` (4 niveaux). Le sous-agent voit la liste courte (nom, description) dans son instruction et lit une skill à la demande avec `read_skill` (tronquée à `SKILL_MAX_CHARS`, références lisibles à part, sorties de dossier refusées). |
 
-Toutes les sorties d'outils sont tronquées (3000 caractères) pour protéger le contexte.
+Les sorties d'outils sont compactées (JSON sans indentation) et plafonnées à `TOOL_RESULT_CHARS` (6000 caractères par défaut) pour protéger le contexte. Un résultat plus long est coupé et se termine par un marqueur qui prévient le modèle qu'il est incomplet : il redemande alors avec une requête plus précise au lieu de présenter une liste partielle comme complète.
 
 ## 6. Observabilité
 
@@ -295,6 +295,7 @@ Fonctionnement :
 | `OPENLLMETRY_KEEP_RAG` | chat, agent | garde les passages RAG dans les traces |
 | `LLM_MODEL`, `EMBED_MODEL` | tous | modèles Ollama |
 | `AGENT_NUM_CTX` | agent | fenêtre de contexte (8192 par défaut) |
+| `TOOL_RESULT_CHARS` | agent | taille maximale d'un résultat d'outil donné au modèle (6000 caractères par défaut) |
 | `MCP_SUBAGENT`, `DT_AGENT_MAX_STEPS` | agent | sous-agent Dynatrace et son nombre d'étapes |
 | `MCP_CONFIG`, `DTCTL_CONFIG`, `DTCTL_CONTEXT`, `SKILLS_DIR`, `SKILL_MAX_CHARS` | agent | emplacement des fichiers des participants |
 | `DOCS_LANG` | chat | langue des documents de la base de connaissances : `en` (par défaut, fichiers `*.md`) ou `fr` (fichiers `*.fr.md`) |
