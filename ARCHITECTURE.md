@@ -79,9 +79,9 @@ Three layers:
 | `mcp` (Python SDK, version 1.x) | MCP protocol client (Streamable HTTP) |
 | `asyncio` | Concurrency, event queue between the agent and the HTTP response |
 
-### AI agent (no agent framework)
-The agent is hand-written in Python: it uses neither LangChain, nor LangGraph, nor CrewAI. The loop fits in about sixty lines
-in `agent.py`.
+### AI agent (hand-written loop by default, LangChain optional)
+By default, the agent is hand-written in Python (no LangChain, LangGraph or CrewAI): the loop fits in about sixty lines
+in `agent.py`. A LangChain / LangGraph variant (`agent_langchain.py`) is available with `AGENT_FRAMEWORK=langchain`.
 
 | Technology | Usage |
 |---|---|
@@ -94,6 +94,7 @@ in `agent.py`.
 | Reading `SKILL.md` files | Skills loaded on demand |
 | `ast` (standard library) | Calculator tool: arithmetic expression parsed and evaluated without `eval` |
 | OpenLLMetry (`@agent`, `@task`, `@tool`) | One span per step and per tool |
+| LangChain, LangGraph, `langchain-ollama` (option `AGENT_FRAMEWORK=langchain`) | Same agent, other engine: `ChatOllama` (same model), `StructuredTool` (the same tools with their JSON schema), `create_agent` (model / tools loop) and `astream` (tokens and updates translated into SSE events) |
 
 A framework would provide memory, state graphs and error recovery out of the box, which the workshop does not use. Choosing a
 hand-written loop keeps the code readable in a single file, lets participants add a tool to it (exercise F3) and
@@ -187,7 +188,7 @@ are used for observability (section 6.3). Ollama groups the `system` messages re
 
 ### 5.2 Agent
 
-The agent is a hand-written loop, without an agent framework (see section 2). `agent-api` runs a loop (`agent.py`, function `loop`): a call to the model with the tools, execution of the requested tool calls,
+By default, the agent is a hand-written loop, without an agent framework (see section 2). With `AGENT_FRAMEWORK=langchain`, the same loop is provided by a LangChain / LangGraph agent (`agent_langchain.py`): same tools, same sub-agent, same SSE events, same interface (the step limit is reproduced: the last step answers without a tool). `agent-api` runs a loop (`agent.py`, function `loop`): a call to the model with the tools, execution of the requested tool calls,
 adding the results, new call, until an answer without tools or until the maximum number of steps (the last step has no tools,
 the model must answer). The SSE events carry an `agent` label (`main` or `dynatrace`).
 
@@ -243,6 +244,8 @@ prompt and response). The decorated functions are plain `async` functions, not g
 events intended for the browser flow through an `asyncio.Queue`, and each request runs in its own task to avoid
 trace context leaks.
 
+**LangChain variant.** With `AGENT_FRAMEWORK=langchain`, `agent-api` enables the LangChain instrumentation of OpenLLMetry instead of the Ollama one (`OPENLLMETRY_INSTRUMENTS=langchain`, otherwise the model calls would be traced twice) and turns the decorators off (`OPENLLMETRY_DECORATORS=false`, otherwise the tools would be traced twice). The spans then come from the SDK: `invoke_agent agent.run`, the `execute_task model` and `execute_task tools` nodes, one `<model>.chat` span per model call (with `gen_ai.system_instructions`, `gen_ai.input.messages` and `gen_ai.output.messages` kept separate), `execute_tool <tool>` per tool, and the sub-agent `invoke_agent dynatrace_agent` under `execute_tool ask_dynatrace`. The callback that hides the history and the RAG passages applies the same way.
+
 ### 6.3 What is exported from the prompt
 
 A `span_postprocess_callback` (`_strip_history`) removes from the LLM span, just before export, the messages starting with the
@@ -295,6 +298,8 @@ How it works:
 | `OPENLLMETRY_KEEP_RAG` | chat, agent | keeps the RAG passages in the traces |
 | `LLM_MODEL`, `EMBED_MODEL` | all | Ollama models |
 | `AGENT_NUM_CTX` | agent | context window (8192 by default) |
+| `AGENT_FRAMEWORK` | agent | agent engine: `python` (default) or `langchain` (`scripts/set-agent-framework.sh`) |
+| `OPENLLMETRY_INSTRUMENTS`, `OPENLLMETRY_DECORATORS` | agent | set automatically from the engine (`ollama` + decorators, or `langchain` without decorators) |
 | `TOOL_RESULT_CHARS` | agent | maximum size of a tool result given to the model (6000 characters by default) |
 | `MCP_SUBAGENT`, `DT_AGENT_MAX_STEPS` | agent | Dynatrace sub-agent and its number of steps |
 | `MCP_CONFIG`, `DTCTL_CONFIG`, `DTCTL_CONTEXT`, `SKILLS_DIR`, `SKILL_MAX_CHARS` | agent | location of the participants' files |
@@ -345,6 +350,7 @@ stack/
   rag-api/                               Python image shared by the chat and the agent
     app/main.py  rag.py                  RAG chat
     app/agent.py  agent_main.py          agent, loop, sub-agent, agent API
+    app/agent_langchain.py               LangChain / LangGraph variant of the agent (AGENT_FRAMEWORK=langchain)
     app/mcp_tools.py  dtctl_tool.py  skills.py   Dynatrace tools
     app/telemetry.py                     OpenLLMetry, decorators, masking callback
   vscode/                                code-server, entrypoint (Continue, dt-evals)

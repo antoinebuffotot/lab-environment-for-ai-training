@@ -98,6 +98,8 @@ services:
       MCP_CONFIG: /workspace/mcp/mcp.json
       # context window of the agent (tools + MCP results + answer); raise it if answers are cut
       AGENT_NUM_CTX: ${AGENT_NUM_CTX:-8192}
+      # python = hand-written agent loop (default), langchain = LangChain / LangGraph agent (scripts/set-agent-framework.sh)
+      AGENT_FRAMEWORK: ${AGENT_FRAMEWORK:-python}
       # max size (characters) of a tool result given to the model; a longer result is cut AND flagged as truncated
       TOOL_RESULT_CHARS: ${TOOL_RESULT_CHARS:-6000}
       # MCP tools are used through a Dynatrace sub-agent (own context); false = give them to the main agent

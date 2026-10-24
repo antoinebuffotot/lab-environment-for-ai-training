@@ -133,7 +133,10 @@ def init_telemetry() -> bool:
         try:
             # only the Ollama (LLM) instrumentation: block everything else
             from traceloop.sdk.instruments import Instruments
-            kwargs.update(instruments={Instruments.OLLAMA})
+            # OPENLLMETRY_INSTRUMENTS: "ollama" (default) or "langchain" (LangChain agent: its own LLM calls are traced
+            # by the LangChain instrumentation, so the Ollama one is left out to avoid duplicate spans)
+            names = [n.strip().lower() for n in os.getenv("OPENLLMETRY_INSTRUMENTS", "ollama").split(",") if n.strip()]
+            kwargs.update(instruments={Instruments[n.upper()] for n in names})
         except Exception:
             log.warning("cannot restrict automatic instrumentations with this SDK version")
 
@@ -159,8 +162,12 @@ def is_enabled() -> bool:
 
 
 def _decorator(kind: str, name: str):
-    """Traceloop @workflow / @task when enabled, otherwise a no-op decorator."""
-    if not _enabled:
+    """Traceloop @workflow / @task when enabled, otherwise a no-op decorator.
+
+    OPENLLMETRY_DECORATORS=false also turns them off: with the LangChain agent the spans come from the LangChain
+    instrumentation (the tools would otherwise be traced twice).
+    """
+    if not _enabled or not _truthy(os.getenv("OPENLLMETRY_DECORATORS", "true")):
         return lambda fn: fn
     from traceloop.sdk import decorators
     return getattr(decorators, kind)(name=name)

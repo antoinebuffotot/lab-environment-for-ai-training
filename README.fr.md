@@ -55,6 +55,7 @@ CONFIGURATION :
 3) config env : nbr total env =3
 4) add env : OpenLLMetry enabled (traces sent to Dynatrace) =N
 5) start env : VM started after installation =N
+6) AI agent framework (python = current agent, default | langchain) =python
 A) apply and deploy the VM - (Ctrl/c to quit)
 ```
 
@@ -66,6 +67,7 @@ A) apply and deploy the VM - (Ctrl/c to quit)
 | 3 | Nombre de VM à créer (20 maximum au total) |
 | 4 | Active OpenLLMetry : le script demande ensuite le tenant et le token Dynatrace, puis la clé du LLM juge (facultative) |
 | 5 | `Y` : les VM restent démarrées. `N` : elles sont arrêtées (désallouées) une fois installées |
+| 6 | Moteur de l'agent IA : `python` (boucle écrite à la main, par défaut) ou `langchain` (agent LangChain / LangGraph) |
 
 Les valeurs saisies sont mémorisées dans `.lab-config` (ignoré par git) pour le prochain lancement.
 
@@ -117,6 +119,7 @@ Une seconde page, avec la même interface (langues, réglages, onglet Observabil
 - Service Docker `agent-api` (même image que `rag-api`, code dans `stack/rag-api/app/agent.py` et `agent_main.py`), joint via nginx sur `/agent/api/`.
 - OpenLLMetry suit `OPENLLMETRY_ENABLED` par défaut ; pour l'activer ou le désactiver sur l'agent seul : `sudo stack/scripts/set-agent-openllmetry.sh on <tenant> <token>` / `off`.
 - Traces : `agent.run` (@agent) > `agent.step` (@task) > appel LLM Ollama, plus un span par outil (@tool).
+- **Moteur de l'agent** (option 6 du déploiement, variable `AGENT_FRAMEWORK`) : `python` (par défaut) est la boucle écrite à la main ; `langchain` utilise un agent LangChain / LangGraph (`stack/rag-api/app/agent_langchain.py`) avec les mêmes outils, la même page et les mêmes événements. Sur une VM existante : `sudo stack/scripts/set-agent-framework.sh python|langchain`. Avec LangChain, les traces viennent de l'instrumentation LangChain d'OpenLLMetry (`agent.run`, appels au modèle, un span par outil, `ask_dynatrace` > `dynatrace_agent`) et non des décorateurs. La pastille « Moteur » de la page agent indique le moteur actif.
 
 ### Sous-agent Dynatrace, MCP, dtctl et skills
 

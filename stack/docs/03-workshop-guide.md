@@ -34,6 +34,7 @@ Each participant has an Ubuntu 22.04 VM of size Standard_B12ms (12 vCPU, 48 GB o
 - `curl localhost/api/health` and `curl localhost/agent/api/health`: status of the models, indexing, OpenLLMetry, dtctl, skills and MCP servers
 - `sudo scripts/set-openllmetry.sh on <tenant> <token>`: enable OpenLLMetry on the chat (`off` to disable it)
 - `sudo scripts/set-agent-openllmetry.sh on <tenant> <token>`: enable OpenLLMetry on the agent
+- `sudo scripts/set-agent-framework.sh python|langchain`: choose the agent engine (hand-written loop, default, or LangChain)
 - `sudo scripts/set-rag-context.sh on`: keep the RAG passages in the traces (required to judge the faithfulness of answers)
 - `scripts/generate-traffic.sh 10`: send ten questions to produce traces
 - `scripts/generate-eval-traffic.sh 2`: send a mix of questions (including out-of-document ones) to be judged by dt-evals
@@ -44,7 +45,7 @@ The details of each exercise (objective, actions, expected results) are in the `
 
 - **A. Discover RAG and the model**: with and without documents, add your own document, generation settings (temperature, top K, top P), system message, number of passages, limits of a local model, multilingual.
 - **B. Observability with OpenLLMetry**: enable OpenLLMetry, read a chat trace, understand the exported prompt, measure with DQL, diagnose an outage.
-- **C. AI agent**: first agent task, agent and documents, trace of an agent, agent settings.
+- **C. AI agent**: first agent task, agent and documents, trace of an agent, agent settings, comparison of the Python and LangChain engines.
 - **D. External tools**: connect a Dynatrace MCP server, query Dynatrace via the sub-agent, configure dtctl, give skills to the agent, compare the access methods.
 - **E. Evaluate responses with dt-evals**: prepare, run, analyze the scores, create a custom evaluator, compare two configurations.
 - **F. Develop in VS Code**: modify the knowledge base, use the Continue chat, add a tool to the agent.

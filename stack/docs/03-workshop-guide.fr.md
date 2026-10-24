@@ -34,6 +34,7 @@ Chaque participant dispose d'une VM Ubuntu 22.04 de taille Standard_B12ms (12 vC
 - `curl localhost/api/health` et `curl localhost/agent/api/health` : état des modèles, de l'indexation, d'OpenLLMetry, de dtctl, des skills et des serveurs MCP
 - `sudo scripts/set-openllmetry.sh on <tenant> <token>` : activer OpenLLMetry sur le chat (`off` pour le désactiver)
 - `sudo scripts/set-agent-openllmetry.sh on <tenant> <token>` : activer OpenLLMetry sur l'agent
+- `sudo scripts/set-agent-framework.sh python|langchain` : choisir le moteur de l'agent (boucle écrite à la main, par défaut, ou LangChain)
 - `sudo scripts/set-rag-context.sh on` : garder les passages RAG dans les traces (nécessaire pour juger la fidélité des réponses)
 - `scripts/generate-traffic.sh 10` : envoyer dix questions pour produire des traces
 - `scripts/generate-eval-traffic.sh 2` : envoyer un mélange de questions (dont hors documents) à faire juger par dt-evals
@@ -44,7 +45,7 @@ Le détail de chaque exercice (objectif, actions, résultats attendus) est dans 
 
 - **A. Découvrir le RAG et le modèle** : avec et sans documents, ajouter son document, réglages de génération (température, top K, top P), message système, nombre de passages, limites d'un modèle local, multilingue.
 - **B. Observabilité avec OpenLLMetry** : activer OpenLLMetry, lire une trace du chat, comprendre le prompt exporté, mesurer en DQL, diagnostiquer une panne.
-- **C. Agent IA** : première tâche d'agent, agent et documents, trace d'un agent, réglages de l'agent.
+- **C. Agent IA** : première tâche d'agent, agent et documents, trace d'un agent, réglages de l'agent, comparaison des moteurs Python et LangChain.
 - **D. Outils externes** : connecter un serveur MCP Dynatrace, interroger Dynatrace via le sous-agent, configurer dtctl, donner des skills à l'agent, comparer les accès.
 - **E. Évaluer les réponses avec dt-evals** : préparer, lancer, analyser les notes, créer un évaluateur personnalisé, comparer deux configurations.
 - **F. Développer dans VS Code** : modifier la base de connaissances, utiliser le chat Continue, ajouter un outil à l'agent.

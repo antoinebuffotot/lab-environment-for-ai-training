@@ -21,6 +21,7 @@ START_ENV=0
 NBENV=3
 OPENLLMETRY_ENABLED='N'          # Y = traces sent to Dynatrace via OpenLLMetry
 VM_STARTED='N'                   # N = VM deallocated after installation
+AGENT_FRAMEWORK='python'         # python = hand-written agent loop (default) | langchain = LangChain / LangGraph agent
 
 # Dynatrace (only used if OpenLLMetry is enabled)
 MyTenant=''                      # <id>.live.dynatrace.com

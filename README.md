@@ -55,6 +55,7 @@ CONFIGURATION :
 3) config env : nbr total env =3
 4) add env : OpenLLMetry enabled (traces sent to Dynatrace) =N
 5) start env : VM started after installation =N
+6) AI agent framework (python = current agent, default | langchain) =python
 A) apply and deploy the VM - (Ctrl/c to quit)
 ```
 
@@ -66,6 +67,7 @@ A) apply and deploy the VM - (Ctrl/c to quit)
 | 3 | Number of VMs to create (20 maximum in total) |
 | 4 | Enables OpenLLMetry: the script then asks for the Dynatrace tenant and token, then the judge LLM key (optional) |
 | 5 | `Y`: the VMs stay running. `N`: they are stopped (deallocated) once installed |
+| 6 | AI agent engine: `python` (hand-written loop, default) or `langchain` (LangChain / LangGraph agent) |
 
 The values entered are saved in `.lab-config` (ignored by git) for the next run.
 
@@ -117,6 +119,7 @@ A second page, with the same interface (languages, settings, Observability tab),
 - Docker service `agent-api` (same image as `rag-api`, code in `stack/rag-api/app/agent.py` and `agent_main.py`), reached through nginx on `/agent/api/`.
 - OpenLLMetry follows `OPENLLMETRY_ENABLED` by default; to enable or disable it on the agent alone: `sudo stack/scripts/set-agent-openllmetry.sh on <tenant> <token>` / `off`.
 - Traces: `agent.run` (@agent) > `agent.step` (@task) > Ollama LLM call, plus one span per tool (@tool).
+- **Agent engine** (deployment option 6, variable `AGENT_FRAMEWORK`): `python` (default) is the hand-written loop; `langchain` uses a LangChain / LangGraph agent (`stack/rag-api/app/agent_langchain.py`) with the same tools, the same page and the same events. On an existing VM: `sudo stack/scripts/set-agent-framework.sh python|langchain`. With LangChain, the traces come from the LangChain instrumentation of OpenLLMetry (`agent.run`, model calls, one span per tool, `ask_dynatrace` > `dynatrace_agent`) and not from the decorators. The "Engine" chip of the agent page shows the active engine.
 
 ### Dynatrace sub-agent, MCP, dtctl and skills
 

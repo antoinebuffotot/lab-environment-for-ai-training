@@ -7,3 +7,7 @@ chromadb==0.6.3
 numpy<2
 traceloop-sdk
 mcp>=1.12,<2
+# AI agent with LangChain (AGENT_FRAMEWORK=langchain); the hand-written agent does not need them
+langchain>=1.0
+langchain-ollama>=1.0
+langgraph>=1.0

@@ -22,7 +22,7 @@ APPLY="N"
 
 save_config() {
   {
-    for v in DOMAIN_NAME_DEFAULT PASSWORD START_ENV NBENV OPENLLMETRY_ENABLED VM_STARTED MyTenant MyToken JUDGE_PROVIDER JUDGE_MODEL JUDGE_API_KEY; do
+    for v in DOMAIN_NAME_DEFAULT PASSWORD START_ENV NBENV OPENLLMETRY_ENABLED VM_STARTED AGENT_FRAMEWORK MyTenant MyToken JUDGE_PROVIDER JUDGE_MODEL JUDGE_API_KEY; do
       printf '%s=%q\n' "$v" "${!v}"
     done
   } > "$CONF_FILE"
@@ -87,6 +87,7 @@ build_setup_script() {
   echo "VM_FQDN='$fqdn'"
   echo "LAB_USER='$user'"
   echo "VSCODE_PASSWORD='$PASSWORD'"
+  echo "AGENT_FRAMEWORK='$AGENT_FRAMEWORK'"
   echo "JUDGE_PROVIDER='$JUDGE_PROVIDER'"
   echo "JUDGE_MODEL='$JUDGE_MODEL'"
   echo "JUDGE_API_KEY='$JUDGE_API_KEY'"
@@ -152,7 +153,7 @@ echo " - Size            : $SIZE_LINUX (12 vCPU / 48 GB RAM, CPU only)"
 echo " - AI model        : $LLM_MODEL (+ $EMBED_MODEL for the embeddings) served by Ollama"
 echo " - RAG services    : ChromaDB + RAG API (FastAPI)"
 echo " - Web chat        : http://<vm>/ (port 80)"
-echo " - Agentic AI      : http://<vm>/agent.html (same model, tools + step-by-step trace)"
+echo " - Agentic AI      : http://<vm>/agent.html (same model, tools + step-by-step trace) - framework : $AGENT_FRAMEWORK"
 echo " - dt-evals        : LLM judge on the traces, run from the VS Code web terminal (needs the judge key, menu 2 of the OpenLLMetry parameters)"
 echo " - VS Code web     : http://<vm>:8080/ (code-server, password = the VM password)"
 echo " - Observability   : OpenLLMetry (optional, traces the prompt and the current activity only)"
@@ -199,10 +200,11 @@ do
   echo "3) config env : nbr total env ="$NBENV
   echo "4) add env : OpenLLMetry enabled (traces sent to Dynatrace) ="$OPENLLMETRY_ENABLED
   echo "5) start env : VM started after installation ="$VM_STARTED
+  echo "6) AI agent framework (python = current agent, default | langchain) ="$AGENT_FRAMEWORK
   echo "A) apply and deploy the VM - (Ctrl/c to quit)"
   echo ""
 
-  read -r -p "Input Selection (0, 1, 2, 3, 4, 5 or A): " reponse
+  read -r -p "Input Selection (0, 1, 2, 3, 4, 5, 6 or A): " reponse
 
   case "$reponse" in
     "0") verif="ko"
@@ -237,6 +239,10 @@ do
          ;;
     "5") if [ "$VM_STARTED" = "Y" ]; then VM_STARTED="N"; else VM_STARTED="Y"; fi
          echo "5) start env : VM started after installation ="$VM_STARTED
+         save_config; sleep 0.5
+         ;;
+    "6") if [ "$AGENT_FRAMEWORK" = "langchain" ]; then AGENT_FRAMEWORK="python"; else AGENT_FRAMEWORK="langchain"; fi
+         echo "6) AI agent framework ="$AGENT_FRAMEWORK
          save_config; sleep 0.5
          ;;
     "A"|"a") APPLY="Y"

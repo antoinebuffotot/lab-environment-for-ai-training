@@ -120,6 +120,11 @@ E1 to E4 (60 min), then B5, D6 or F for the faster participants.
 - **Expected result**: *Web*: at the last step the agent must answer without a tool. An orange alert appears if the context window is
   almost full or if the answer is truncated.
 
+### C5. Compare the Python engine and LangChain
+- **Objective**: see the same agent application with a framework and without.
+- **Actions**: run the task of C1 and the one of C2, then over SSH `sudo scripts/set-agent-framework.sh langchain`, reload the agent page and run the same tasks again; open the traces in both cases (OpenLLMetry active on the agent).
+- **Expected result**: *Web*: the "Engine" chip changes from Python to LangChain; the steps, tools and answers are presented the same way. *Dynatrace*: with Python, the `agent.run`, `agent.step` and one-span-per-tool spans come from the decorators; with LangChain they come from the automatic instrumentation (`invoke_agent agent.run`, `execute_task model`, `<model>.chat`, `execute_tool <tool>`), with more intermediate spans. The answers may differ (different formatting of the messages and tool calls).
+
 ---
 
 ## Block D. External tools: MCP, sub-agent, dtctl, skills

@@ -14,6 +14,13 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name
 # OpenLLMetry must be initialised BEFORE ollama / chromadb are imported (see rag.py)
 from app.telemetry import init_telemetry, is_enabled, service_name  # noqa: E402
 
+# Agent engine: python = the hand-written loop (agent.py, default), langchain = LangChain / LangGraph (agent_langchain.py).
+# With LangChain the traces come from the LangChain instrumentation of OpenLLMetry instead of the decorators.
+FRAMEWORK = "langchain" if os.getenv("AGENT_FRAMEWORK", "python").strip().lower() == "langchain" else "python"
+if FRAMEWORK == "langchain":
+    os.environ["OPENLLMETRY_INSTRUMENTS"] = "langchain"
+    os.environ["OPENLLMETRY_DECORATORS"] = "false"
+
 init_telemetry()
 
 from fastapi import FastAPI, HTTPException  # noqa: E402
@@ -21,8 +28,13 @@ from fastapi.responses import StreamingResponse  # noqa: E402
 from pydantic import BaseModel, Field  # noqa: E402
 
 from app import dtctl_tool, mcp_tools, rag, skills  # noqa: E402
-from app.agent import (AGENT_SYSTEM_PROMPT, AGENT_SYSTEM_PROMPTS, ASK_DYNATRACE, DEFAULT_AGENT_PARAMS, NUM_CTX,
-                       TOOLS, agent_turn, dynatrace_tool_schemas, subagent_active)  # noqa: E402
+from app.agent import (AGENT_SYSTEM_PROMPT, AGENT_SYSTEM_PROMPTS, ASK_DYNATRACE, DEFAULT_AGENT_PARAMS, NUM_CTX,  # noqa: E402
+                       TOOLS, dynatrace_tool_schemas, subagent_active)
+
+if FRAMEWORK == "langchain":
+    from app.agent_langchain import agent_turn  # noqa: E402
+else:
+    from app.agent import agent_turn  # noqa: E402
 
 log = logging.getLogger("agent-api")
 D = DEFAULT_AGENT_PARAMS
@@ -67,6 +79,7 @@ async def health():
         "subagent": subagent_active(),
         "mcp": mcp,
         "num_ctx": NUM_CTX,
+        "framework": FRAMEWORK,
         "host": os.getenv("VM_FQDN", "localhost"),
     }
 

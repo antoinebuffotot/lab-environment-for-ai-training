@@ -79,9 +79,9 @@ Trois couches :
 | `mcp` (SDK Python, version 1.x) | Client du protocole MCP (Streamable HTTP) |
 | `asyncio` | Concurrence, file d'événements entre l'agent et la réponse HTTP |
 
-### Agent IA (aucun framework d'agent)
-L'agent est écrit à la main en Python : il n'utilise ni LangChain, ni LangGraph, ni CrewAI. La boucle tient en une soixantaine de lignes
-dans `agent.py`.
+### Agent IA (boucle écrite à la main par défaut, LangChain en option)
+Par défaut, l'agent est écrit à la main en Python (ni LangChain, ni LangGraph, ni CrewAI) : la boucle tient en une soixantaine de lignes
+dans `agent.py`. Une variante LangChain / LangGraph (`agent_langchain.py`) est disponible avec `AGENT_FRAMEWORK=langchain`.
 
 | Technologie | Usage |
 |---|---|
@@ -94,6 +94,7 @@ dans `agent.py`.
 | Lecture de fichiers `SKILL.md` | Skills chargées à la demande |
 | `ast` (bibliothèque standard) | Outil de calcul : expression arithmétique analysée et évaluée sans `eval` |
 | OpenLLMetry (`@agent`, `@task`, `@tool`) | Un span par étape et par outil |
+| LangChain, LangGraph, `langchain-ollama` (option `AGENT_FRAMEWORK=langchain`) | Même agent, autre moteur : `ChatOllama` (même modèle), `StructuredTool` (les mêmes outils avec leur JSON schema), `create_agent` (boucle modèle / outils) et `astream` (jetons et mises à jour traduits en événements SSE) |
 
 Un framework donnerait de la mémoire, des graphes d'états et des reprises sur erreur prêts à l'emploi, que l'atelier n'utilise pas. Le
 choix d'une boucle écrite à la main garde le code lisible en un seul fichier, permet aux participants d'y ajouter un outil (exercice F3) et
@@ -187,7 +188,7 @@ servent à l'observabilité (section 6.3). Ollama regroupe les messages `system`
 
 ### 5.2 Agent
 
-L'agent est une boucle écrite à la main, sans framework d'agent (voir section 2). `agent-api` exécute une boucle (`agent.py`, fonction `loop`) : un appel au modèle avec les outils, exécution des appels d'outils demandés,
+Par défaut, l'agent est une boucle écrite à la main, sans framework d'agent (voir section 2). Avec `AGENT_FRAMEWORK=langchain`, la même boucle est assurée par un agent LangChain / LangGraph (`agent_langchain.py`) : mêmes outils, même sous-agent, mêmes événements SSE, même interface (la limite d'étapes est reproduite : la dernière étape répond sans outil). `agent-api` exécute une boucle (`agent.py`, fonction `loop`) : un appel au modèle avec les outils, exécution des appels d'outils demandés,
 ajout des résultats, nouvel appel, jusqu'à une réponse sans outil ou jusqu'au nombre d'étapes maximal (la dernière étape n'a pas d'outils,
 le modèle doit répondre). Les événements SSE portent un label `agent` (`main` ou `dynatrace`).
 
@@ -243,6 +244,8 @@ prompt et réponse). Les fonctions décorées sont des fonctions `async` simples
 événements SSE destinés au navigateur circulent par une `asyncio.Queue`, et chaque requête s'exécute dans sa propre tâche pour éviter
 les fuites de contexte de trace.
 
+**Variante LangChain.** Avec `AGENT_FRAMEWORK=langchain`, `agent-api` active l'instrumentation LangChain d'OpenLLMetry à la place de celle d'Ollama (`OPENLLMETRY_INSTRUMENTS=langchain`, sinon les appels au modèle seraient tracés deux fois) et désactive les décorateurs (`OPENLLMETRY_DECORATORS=false`, sinon les outils seraient tracés deux fois). Les spans viennent alors du SDK : `invoke_agent agent.run`, les nœuds `execute_task model` et `execute_task tools`, un span `<modèle>.chat` par appel au modèle (avec `gen_ai.system_instructions`, `gen_ai.input.messages` et `gen_ai.output.messages` séparés), `execute_tool <outil>` par outil, et le sous-agent `invoke_agent dynatrace_agent` sous `execute_tool ask_dynatrace`. Le callback de masquage de l'historique et des passages RAG s'applique de la même façon.
+
 ### 6.3 Ce qui est exporté du prompt
 
 Un callback `span_postprocess_callback` (`_strip_history`) retire du span LLM, juste avant l'export, les messages commençant par les
@@ -295,6 +298,8 @@ Fonctionnement :
 | `OPENLLMETRY_KEEP_RAG` | chat, agent | garde les passages RAG dans les traces |
 | `LLM_MODEL`, `EMBED_MODEL` | tous | modèles Ollama |
 | `AGENT_NUM_CTX` | agent | fenêtre de contexte (8192 par défaut) |
+| `AGENT_FRAMEWORK` | agent | moteur de l'agent : `python` (par défaut) ou `langchain` (`scripts/set-agent-framework.sh`) |
+| `OPENLLMETRY_INSTRUMENTS`, `OPENLLMETRY_DECORATORS` | agent | positionnées automatiquement selon le moteur (`ollama` + décorateurs, ou `langchain` sans décorateurs) |
 | `TOOL_RESULT_CHARS` | agent | taille maximale d'un résultat d'outil donné au modèle (6000 caractères par défaut) |
 | `MCP_SUBAGENT`, `DT_AGENT_MAX_STEPS` | agent | sous-agent Dynatrace et son nombre d'étapes |
 | `MCP_CONFIG`, `DTCTL_CONFIG`, `DTCTL_CONTEXT`, `SKILLS_DIR`, `SKILL_MAX_CHARS` | agent | emplacement des fichiers des participants |
@@ -345,6 +350,7 @@ stack/
   rag-api/                               image Python partagée par le chat et l'agent
     app/main.py  rag.py                  chat RAG
     app/agent.py  agent_main.py          agent, boucle, sous-agent, API de l'agent
+    app/agent_langchain.py               variante LangChain / LangGraph de l'agent (AGENT_FRAMEWORK=langchain)
     app/mcp_tools.py  dtctl_tool.py  skills.py   outils Dynatrace
     app/telemetry.py                     OpenLLMetry, décorateurs, callback de masquage
   vscode/                                code-server, entrypoint (Continue, dt-evals)

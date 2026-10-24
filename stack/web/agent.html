@@ -43,6 +43,7 @@
     <span class="chip" id="st-model"><i class="dot"></i><span></span></span>
     <span class="chip off" id="st-tools"><i class="dot"></i><span></span></span>
     <span class="chip off" id="st-dtctl"><i class="dot"></i><span></span></span>
+    <span class="chip off" id="st-fw"><i class="dot"></i><span></span></span>
     <span class="chip off" id="st-otel"><i class="dot"></i><span></span></span>
   </div>
   <div class="lang" id="lang" role="group" aria-label="Language"></div>
@@ -152,7 +153,7 @@ const API = "/agent";   // nginx: /agent/api/* -> agent-api /api/*
 const I18N = {
   fr: {
     title: "Atelier IA", pageTitle: "Atelier IA - Agent", navChat: "Chat", navAgent: "Agent", tabsAria: "Panneau latéral",
-    tabSettings: "Paramètres", tabTools: "Outils", tabObs: "Observability", stDtctlOk: "dtctl : prêt", stDtctlNoCfg: "dtctl : non configuré", stDtctlMissing: "dtctl : non installé", stDtctlWait: "dtctl : en attente", dtHead: "Dynatrace (sous-agent)", dtctlMissing: "dtctl : non installé dans cette image", dtctlNoConfig: "dtctl : non configuré ({file} introuvable)", dtctlOk: "dtctl : prêt (lecture seule)", skillsNone: "Skills : aucune ({dir})", skillsOk: "Skills : {n} ({names})", subAgent: "Sous-agent Dynatrace", warnLength: "Réponse coupée : la limite de contexte du modèle ({ctx} jetons) a été atteinte. Réduisez le nombre d'outils MCP dans mcp.json ou augmentez AGENT_NUM_CTX.", warnContext: "Contexte presque plein ({tokens} / {ctx} jetons) : le modèle risque de perdre le début du prompt ou de couper sa réponse. Réduisez les outils MCP dans mcp.json ou augmentez AGENT_NUM_CTX.", mcpNone: "Aucun fichier mcp.json : créez-le dans VS Code web (dossier {file}) pour ajouter des outils MCP.", mcpOk: "{name} : {n} outil(s) MCP", mcpKo: "{name} : {error}", mcpHead: "Serveurs MCP",
+    tabSettings: "Paramètres", tabTools: "Outils", tabObs: "Observability", stFramework: "Moteur : {name}", stDtctlOk: "dtctl : prêt", stDtctlNoCfg: "dtctl : non configuré", stDtctlMissing: "dtctl : non installé", stDtctlWait: "dtctl : en attente", dtHead: "Dynatrace (sous-agent)", dtctlMissing: "dtctl : non installé dans cette image", dtctlNoConfig: "dtctl : non configuré ({file} introuvable)", dtctlOk: "dtctl : prêt (lecture seule)", skillsNone: "Skills : aucune ({dir})", skillsOk: "Skills : {n} ({names})", subAgent: "Sous-agent Dynatrace", warnLength: "Réponse coupée : la limite de contexte du modèle ({ctx} jetons) a été atteinte. Réduisez le nombre d'outils MCP dans mcp.json ou augmentez AGENT_NUM_CTX.", warnContext: "Contexte presque plein ({tokens} / {ctx} jetons) : le modèle risque de perdre le début du prompt ou de couper sa réponse. Réduisez les outils MCP dans mcp.json ou augmentez AGENT_NUM_CTX.", mcpNone: "Aucun fichier mcp.json : créez-le dans VS Code web (dossier {file}) pour ajouter des outils MCP.", mcpOk: "{name} : {n} outil(s) MCP", mcpKo: "{name} : {error}", mcpHead: "Serveurs MCP",
     temp: "Température", tempHint: "Basse : décisions stables et prévisibles. Haute : plus de variété.",
     topkHint: "Nombre de jetons candidats examinés à chaque étape. Bas : plus prudent.",
     toppHint: "Ne garde que les candidats dont la probabilité cumulée atteint cette valeur.",
@@ -180,7 +181,7 @@ const I18N = {
   },
   en: {
     title: "AI Workshop", pageTitle: "AI Workshop - Agent", navChat: "Chat", navAgent: "Agent", tabsAria: "Side panel",
-    tabSettings: "Settings", tabTools: "Tools", tabObs: "Observability", stDtctlOk: "dtctl: ready", stDtctlNoCfg: "dtctl: not configured", stDtctlMissing: "dtctl: not installed", stDtctlWait: "dtctl: waiting", dtHead: "Dynatrace (sub-agent)", dtctlMissing: "dtctl: not installed in this image", dtctlNoConfig: "dtctl: not configured ({file} not found)", dtctlOk: "dtctl: ready (read-only)", skillsNone: "Skills: none ({dir})", skillsOk: "Skills: {n} ({names})", subAgent: "Dynatrace sub-agent", warnLength: "Answer cut: the model context limit ({ctx} tokens) was reached. Reduce the MCP tools in mcp.json or raise AGENT_NUM_CTX.", warnContext: "Context almost full ({tokens} / {ctx} tokens): the model may lose the start of the prompt or cut its answer. Reduce the MCP tools in mcp.json or raise AGENT_NUM_CTX.", mcpNone: "No mcp.json file: create it in VS Code web (folder {file}) to add MCP tools.", mcpOk: "{name}: {n} MCP tool(s)", mcpKo: "{name}: {error}", mcpHead: "MCP servers",
+    tabSettings: "Settings", tabTools: "Tools", tabObs: "Observability", stFramework: "Engine: {name}", stDtctlOk: "dtctl: ready", stDtctlNoCfg: "dtctl: not configured", stDtctlMissing: "dtctl: not installed", stDtctlWait: "dtctl: waiting", dtHead: "Dynatrace (sub-agent)", dtctlMissing: "dtctl: not installed in this image", dtctlNoConfig: "dtctl: not configured ({file} not found)", dtctlOk: "dtctl: ready (read-only)", skillsNone: "Skills: none ({dir})", skillsOk: "Skills: {n} ({names})", subAgent: "Dynatrace sub-agent", warnLength: "Answer cut: the model context limit ({ctx} tokens) was reached. Reduce the MCP tools in mcp.json or raise AGENT_NUM_CTX.", warnContext: "Context almost full ({tokens} / {ctx} tokens): the model may lose the start of the prompt or cut its answer. Reduce the MCP tools in mcp.json or raise AGENT_NUM_CTX.", mcpNone: "No mcp.json file: create it in VS Code web (folder {file}) to add MCP tools.", mcpOk: "{name}: {n} MCP tool(s)", mcpKo: "{name}: {error}", mcpHead: "MCP servers",
     temp: "Temperature", tempHint: "Low: stable, predictable decisions. High: more variety.",
     topkHint: "Number of candidate tokens considered at each step. Low: more cautious.",
     toppHint: "Keeps only the candidates whose cumulative probability reaches this value.",
@@ -208,7 +209,7 @@ const I18N = {
   },
   es: {
     title: "Taller de IA", pageTitle: "Taller de IA - Agente", navChat: "Chat", navAgent: "Agente", tabsAria: "Panel lateral",
-    tabSettings: "Ajustes", tabTools: "Herramientas", tabObs: "Observability", stDtctlOk: "dtctl: listo", stDtctlNoCfg: "dtctl: sin configurar", stDtctlMissing: "dtctl: no instalado", stDtctlWait: "dtctl: en espera", dtHead: "Dynatrace (subagente)", dtctlMissing: "dtctl: no instalado en esta imagen", dtctlNoConfig: "dtctl: sin configurar ({file} no encontrado)", dtctlOk: "dtctl: listo (solo lectura)", skillsNone: "Skills: ninguna ({dir})", skillsOk: "Skills: {n} ({names})", subAgent: "Subagente Dynatrace", warnLength: "Respuesta cortada: se alcanzó el límite de contexto del modelo ({ctx} tokens). Reduzca las herramientas MCP en mcp.json o aumente AGENT_NUM_CTX.", warnContext: "Contexto casi lleno ({tokens} / {ctx} tokens): el modelo puede perder el principio del prompt o cortar su respuesta. Reduzca las herramientas MCP en mcp.json o aumente AGENT_NUM_CTX.", mcpNone: "Ningún archivo mcp.json: créelo en VS Code web (carpeta {file}) para añadir herramientas MCP.", mcpOk: "{name}: {n} herramienta(s) MCP", mcpKo: "{name}: {error}", mcpHead: "Servidores MCP",
+    tabSettings: "Ajustes", tabTools: "Herramientas", tabObs: "Observability", stFramework: "Motor: {name}", stDtctlOk: "dtctl: listo", stDtctlNoCfg: "dtctl: sin configurar", stDtctlMissing: "dtctl: no instalado", stDtctlWait: "dtctl: en espera", dtHead: "Dynatrace (subagente)", dtctlMissing: "dtctl: no instalado en esta imagen", dtctlNoConfig: "dtctl: sin configurar ({file} no encontrado)", dtctlOk: "dtctl: listo (solo lectura)", skillsNone: "Skills: ninguna ({dir})", skillsOk: "Skills: {n} ({names})", subAgent: "Subagente Dynatrace", warnLength: "Respuesta cortada: se alcanzó el límite de contexto del modelo ({ctx} tokens). Reduzca las herramientas MCP en mcp.json o aumente AGENT_NUM_CTX.", warnContext: "Contexto casi lleno ({tokens} / {ctx} tokens): el modelo puede perder el principio del prompt o cortar su respuesta. Reduzca las herramientas MCP en mcp.json o aumente AGENT_NUM_CTX.", mcpNone: "Ningún archivo mcp.json: créelo en VS Code web (carpeta {file}) para añadir herramientas MCP.", mcpOk: "{name}: {n} herramienta(s) MCP", mcpKo: "{name}: {error}", mcpHead: "Servidores MCP",
     temp: "Temperatura", tempHint: "Baja: decisiones estables y predecibles. Alta: más variedad.",
     topkHint: "Número de tokens candidatos examinados en cada paso. Bajo: más prudente.",
     toppHint: "Conserva solo los candidatos cuya probabilidad acumulada alcanza este valor.",
@@ -236,7 +237,7 @@ const I18N = {
   },
   de: {
     title: "KI-Workshop", pageTitle: "KI-Workshop - Agent", navChat: "Chat", navAgent: "Agent", tabsAria: "Seitenleiste",
-    tabSettings: "Einstellungen", tabTools: "Werkzeuge", tabObs: "Observability", stDtctlOk: "dtctl: bereit", stDtctlNoCfg: "dtctl: nicht konfiguriert", stDtctlMissing: "dtctl: nicht installiert", stDtctlWait: "dtctl: wartet", dtHead: "Dynatrace (Sub-Agent)", dtctlMissing: "dtctl: in diesem Image nicht installiert", dtctlNoConfig: "dtctl: nicht konfiguriert ({file} nicht gefunden)", dtctlOk: "dtctl: bereit (nur Lesezugriff)", skillsNone: "Skills: keine ({dir})", skillsOk: "Skills: {n} ({names})", subAgent: "Dynatrace-Sub-Agent", warnLength: "Antwort abgeschnitten: Das Kontextlimit des Modells ({ctx} Tokens) wurde erreicht. Reduzieren Sie die MCP-Werkzeuge in mcp.json oder erhöhen Sie AGENT_NUM_CTX.", warnContext: "Kontext fast voll ({tokens} / {ctx} Tokens): Das Modell kann den Anfang des Prompts verlieren oder seine Antwort abschneiden. Reduzieren Sie die MCP-Werkzeuge in mcp.json oder erhöhen Sie AGENT_NUM_CTX.", mcpNone: "Keine mcp.json-Datei: Legen Sie sie in VS Code web an (Ordner {file}), um MCP-Werkzeuge hinzuzufügen.", mcpOk: "{name}: {n} MCP-Werkzeug(e)", mcpKo: "{name}: {error}", mcpHead: "MCP-Server",
+    tabSettings: "Einstellungen", tabTools: "Werkzeuge", tabObs: "Observability", stFramework: "Engine: {name}", stDtctlOk: "dtctl: bereit", stDtctlNoCfg: "dtctl: nicht konfiguriert", stDtctlMissing: "dtctl: nicht installiert", stDtctlWait: "dtctl: wartet", dtHead: "Dynatrace (Sub-Agent)", dtctlMissing: "dtctl: in diesem Image nicht installiert", dtctlNoConfig: "dtctl: nicht konfiguriert ({file} nicht gefunden)", dtctlOk: "dtctl: bereit (nur Lesezugriff)", skillsNone: "Skills: keine ({dir})", skillsOk: "Skills: {n} ({names})", subAgent: "Dynatrace-Sub-Agent", warnLength: "Antwort abgeschnitten: Das Kontextlimit des Modells ({ctx} Tokens) wurde erreicht. Reduzieren Sie die MCP-Werkzeuge in mcp.json oder erhöhen Sie AGENT_NUM_CTX.", warnContext: "Kontext fast voll ({tokens} / {ctx} Tokens): Das Modell kann den Anfang des Prompts verlieren oder seine Antwort abschneiden. Reduzieren Sie die MCP-Werkzeuge in mcp.json oder erhöhen Sie AGENT_NUM_CTX.", mcpNone: "Keine mcp.json-Datei: Legen Sie sie in VS Code web an (Ordner {file}), um MCP-Werkzeuge hinzuzufügen.", mcpOk: "{name}: {n} MCP-Werkzeug(e)", mcpKo: "{name}: {error}", mcpHead: "MCP-Server",
     temp: "Temperatur", tempHint: "Niedrig: stabile, vorhersehbare Entscheidungen. Hoch: mehr Abwechslung.",
     topkHint: "Anzahl der in jedem Schritt geprüften Kandidaten-Tokens. Niedrig: vorsichtiger.",
     toppHint: "Behält nur die Kandidaten, deren kumulierte Wahrscheinlichkeit diesen Wert erreicht.",
@@ -264,7 +265,7 @@ const I18N = {
   },
   it: {
     title: "Laboratorio IA", pageTitle: "Laboratorio IA - Agente", navChat: "Chat", navAgent: "Agente", tabsAria: "Pannello laterale",
-    tabSettings: "Impostazioni", tabTools: "Strumenti", tabObs: "Observability", stDtctlOk: "dtctl: pronto", stDtctlNoCfg: "dtctl: non configurato", stDtctlMissing: "dtctl: non installato", stDtctlWait: "dtctl: in attesa", dtHead: "Dynatrace (sotto-agente)", dtctlMissing: "dtctl: non installato in questa immagine", dtctlNoConfig: "dtctl: non configurato ({file} non trovato)", dtctlOk: "dtctl: pronto (sola lettura)", skillsNone: "Skills: nessuna ({dir})", skillsOk: "Skills: {n} ({names})", subAgent: "Sotto-agente Dynatrace", warnLength: "Risposta troncata: è stato raggiunto il limite di contesto del modello ({ctx} token). Riduci gli strumenti MCP in mcp.json o aumenta AGENT_NUM_CTX.", warnContext: "Contesto quasi pieno ({tokens} / {ctx} token): il modello può perdere l'inizio del prompt o troncare la risposta. Riduci gli strumenti MCP in mcp.json o aumenta AGENT_NUM_CTX.", mcpNone: "Nessun file mcp.json: crealo in VS Code web (cartella {file}) per aggiungere strumenti MCP.", mcpOk: "{name}: {n} strumento/i MCP", mcpKo: "{name}: {error}", mcpHead: "Server MCP",
+    tabSettings: "Impostazioni", tabTools: "Strumenti", tabObs: "Observability", stFramework: "Motore: {name}", stDtctlOk: "dtctl: pronto", stDtctlNoCfg: "dtctl: non configurato", stDtctlMissing: "dtctl: non installato", stDtctlWait: "dtctl: in attesa", dtHead: "Dynatrace (sotto-agente)", dtctlMissing: "dtctl: non installato in questa immagine", dtctlNoConfig: "dtctl: non configurato ({file} non trovato)", dtctlOk: "dtctl: pronto (sola lettura)", skillsNone: "Skills: nessuna ({dir})", skillsOk: "Skills: {n} ({names})", subAgent: "Sotto-agente Dynatrace", warnLength: "Risposta troncata: è stato raggiunto il limite di contesto del modello ({ctx} token). Riduci gli strumenti MCP in mcp.json o aumenta AGENT_NUM_CTX.", warnContext: "Contesto quasi pieno ({tokens} / {ctx} token): il modello può perdere l'inizio del prompt o troncare la risposta. Riduci gli strumenti MCP in mcp.json o aumenta AGENT_NUM_CTX.", mcpNone: "Nessun file mcp.json: crealo in VS Code web (cartella {file}) per aggiungere strumenti MCP.", mcpOk: "{name}: {n} strumento/i MCP", mcpKo: "{name}: {error}", mcpHead: "Server MCP",
     temp: "Temperatura", tempHint: "Bassa: decisioni stabili e prevedibili. Alta: più varietà.",
     topkHint: "Numero di token candidati esaminati a ogni passo. Basso: più prudente.",
     toppHint: "Mantiene solo i candidati la cui probabilità cumulativa raggiunge questo valore.",
@@ -305,7 +306,7 @@ function renderStatus() {
   if (!h) {
     setChip("st-model", linkDown ? "err" : "", t(linkDown ? "unreachable" : "stModelWait"));
     setChip("st-tools", "off", t("stToolsWait")); setChip("st-otel", "off", t("stOtelWait"));
-    setChip("st-dtctl", "off", t("stDtctlWait"));
+    setChip("st-dtctl", "off", t("stDtctlWait")); setChip("st-fw", "off", t("stFramework", { name: "…" }));
     showNotice(linkDown ? t("noticeDown") : ""); $("obs-service").textContent = ""; return;
   }
   setChip("st-model", h.models_ready ? "ok" : "", t(h.models_ready ? "stModelOk" : "stModelPull", { model: h.model }));
@@ -315,6 +316,7 @@ function renderStatus() {
   else if (!dt.configured) setChip("st-dtctl", "", t("stDtctlNoCfg"));
   else setChip("st-dtctl", "ok", t("stDtctlOk"));
   $("st-dtctl").title = dt.config || "";
+  setChip("st-fw", "ok", t("stFramework", { name: h.framework === "langchain" ? "LangChain" : "Python" }));
   setChip("st-otel", h.openllmetry ? "ok" : "off", t(h.openllmetry ? "stOtelOn" : "stOtelOff") + (h.openllmetry ? " (" + h.service + ")" : ""));
   $("obs-service").textContent = t("obsService", { service: h.service });
   showNotice(h.models_ready ? "" : t("noticePull", { model: h.model }));
@@ -460,8 +462,8 @@ function makeRun() {
 /* One state per run. Events come from the API ("agent" is "main" or "dynatrace"); the same handler replays the
    saved events when the page is restored. The sub-agent activity is drawn inside the ask_dynatrace card. */
 function newRunState(run) {
-  return { run, steps: run.querySelector(".steps"), main: { step: null, card: null },
-    sub: { step: null, card: null, box: null }, final: null };
+  return { run, steps: run.querySelector(".steps"), main: { step: null, card: null, cards: {} },
+    sub: { step: null, card: null, box: null, cards: {} }, final: null };
 }
 function handleEvent(st, ev, j) {
   const isSub = j.agent === "dynatrace", who = isSub ? st.sub : st.main;
@@ -474,12 +476,14 @@ function handleEvent(st, ev, j) {
       }
       who.step = newStep(st.sub.box || st.steps, j.n);
     } else {
-      who.step = newStep(st.steps, j.n); st.sub = { step: null, card: null, box: null };
+      who.step = newStep(st.steps, j.n); st.sub = { step: null, card: null, box: null, cards: {} };
     }
   }
   else if (ev === "token" && who.step) { who.step.text += j.text; who.step.querySelector(".stext").innerHTML = md(who.step.text); }
-  else if (ev === "tool_call" && who.step) { who.step.classList.add("thought"); who.card = newToolCard(who.step, j.name, j.args); }
-  else if (ev === "tool_result" && who.card) { const r = cardResult(who.card); r.classList.remove("wait"); r.textContent = j.result; }
+  else if (ev === "tool_call" && who.step) { who.step.classList.add("thought"); who.card = newToolCard(who.step, j.name, j.args); if (j.id) who.cards[j.id] = who.card; }
+  else if (ev === "tool_result" && (who.card || who.cards[j.id])) {
+    const r = cardResult((j.id && who.cards[j.id]) || who.card); r.classList.remove("wait"); r.textContent = j.result;
+  }
   else if (ev === "warning") {
     const p = document.createElement("p"); p.className = "warn";
     p.textContent = j.code === "length" ? t("warnLength", { ctx: j.ctx }) : t("warnContext", { tokens: j.tokens, ctx: j.ctx });
