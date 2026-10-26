@@ -55,6 +55,21 @@ def _message_text(message) -> str:
     return "".join(p.get("content", "") for p in parts if isinstance(p, dict) and isinstance(p.get("content"), str))
 
 
+def _ensure_model(attrs) -> None:
+    """The LangChain instrumentation does not always find the model name of ChatOllama: fill it on the LLM spans.
+
+    An LLM span is one that already carries gen_ai.* / llm.* attributes (prompt, usage, request type...).
+    """
+    is_llm = "llm.request.type" in attrs or any(k.startswith("gen_ai.") for k in attrs)
+    if not is_llm:
+        return
+    model = os.getenv("LLM_MODEL", "qwen2.5:7b")
+    for key in ("gen_ai.request.model", "gen_ai.response.model"):
+        if not attrs.get(key) or attrs.get(key) == "unknown":
+            attrs[key] = model
+    attrs.setdefault("gen_ai.system", "ollama")
+
+
 def _strip_history(span) -> None:
     """span_postprocess_callback: drop the history and RAG messages from the prompt recorded on the LLM span.
 
@@ -65,6 +80,7 @@ def _strip_history(span) -> None:
     """
     try:
         attrs = span._attributes
+        _ensure_model(attrs)
         raw = attrs.get("gen_ai.input.messages")
         if isinstance(raw, str):
             messages = json.loads(raw)
